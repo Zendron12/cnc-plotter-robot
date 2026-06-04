@@ -463,28 +463,6 @@
       display: grid;
     }
 
-    .converted-lineart-box {
-      display: none;
-      gap: 8px;
-      padding: 10px 12px;
-      border: 1px solid rgba(24, 34, 43, 0.08);
-      border-radius: var(--radius-md);
-      background: rgba(255, 255, 255, 0.54);
-    }
-
-    .converted-lineart-box.active {
-      display: grid;
-    }
-
-    .converted-lineart-box img {
-      width: 100%;
-      max-height: 260px;
-      object-fit: contain;
-      border: 1px solid rgba(24, 34, 43, 0.08);
-      border-radius: var(--radius-sm);
-      background: #fff;
-    }
-
     .sketch-preview-box img {
       width: 100%;
       min-height: 260px;
@@ -566,21 +544,6 @@
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
-    }
-
-    .compare-results {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 12px;
-    }
-
-    .compare-result {
-      border: 1px solid rgba(24, 34, 43, 0.08);
-      border-radius: var(--radius-md);
-      padding: 12px;
-      background: rgba(255, 255, 255, 0.72);
-      color: var(--ink);
     }
 
     .preview-metric {
@@ -1363,25 +1326,9 @@
               </div>
 
               <div id="tool-file-panel" class="tool-panel">
-                <p class="helper-copy">Upload SVG, sketch/line-art, or colored raster input. Colored images use local outline conversion before Adaptive Centerline.</p>
+                <p class="helper-copy">Upload an SVG or a sketch / line-art raster image. The image is vectorized through the Adaptive Centerline pipeline.</p>
                 <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg">
                 <div class="field-grid">
-                  <div class="field">
-                    <label for="file-input-type">Input Type</label>
-                    <select id="file-input-type">
-                      <option value="auto" selected>Auto</option>
-                      <option value="sketch_image">Sketch / Line Art</option>
-                      <option value="colored_image">Colored Image</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label for="color-lineart-method">Color Line-Art Method</label>
-                    <select id="color-lineart-method">
-                      <option value="auto_outline" selected>Auto Outline (Recommended)</option>
-                      <option value="photo_diagram_edges">Photo / Diagram Edges</option>
-                      <option value="simple_cartoon">Simple Cartoon / Diagram Outline</option>
-                    </select>
-                  </div>
                   <div class="field">
                     <label for="sketch-optimization-preset">Detail Level</label>
                     <select id="sketch-optimization-preset">
@@ -1405,15 +1352,6 @@
                     <div class="field-hint">
                       Lower&nbsp;= faster &amp; less detail. Higher&nbsp;= preserves thin strokes but slower.
                     </div>
-                  </div>
-                  <div class="field debug-only">
-                    <label for="vectorization-engine">Vectorization Engine</label>
-                    <select id="vectorization-engine">
-                      <option value="internal_centerline" selected>Internal Centerline</option>
-                      <option value="autotrace_centerline">AutoTrace Centerline</option>
-                      <option value="potrace_bw">Potrace B/W</option>
-                      <option value="vtracer_svg">VTracer SVG</option>
-                    </select>
                   </div>
                   <div class="field">
                     <label for="sketch-preview-geometry">Path Smoothness</label>
@@ -1508,19 +1446,12 @@
                 </details>
                 <div class="action-row">
                   <button id="file-upload-btn" class="secondary-btn" type="button">Generate Preview</button>
-                  <button id="compare-methods-btn" class="quiet-btn debug-only" type="button">Compare Methods</button>
                   <button id="file-draw-btn" class="primary-btn" type="button" disabled>Draw</button>
                   <button id="sketch-download-metrics-btn" class="quiet-btn" type="button" disabled>Download Metrics</button>
                 </div>
                 <div id="file-meta" class="micro-pill"><strong>Upload</strong> none</div>
                 <p class="helper-copy">Detected/Selected pipeline: <strong id="pipeline-mode-label">Sketch Centerline</strong></p>
                 <p id="sketch-draw-status" class="helper-copy">Draw is available after Generate Preview returns a valid preview_id.</p>
-                <div id="compare-results" class="compare-results debug-only" hidden></div>
-                <div id="converted-lineart-box" class="converted-lineart-box" hidden>
-                  <div class="sketch-preview-title">Converted Line-Art Preview</div>
-                  <div id="converted-lineart-note" class="sketch-preview-note">Local outline conversion output before centerline vectorization.</div>
-                  <img id="converted-lineart-img" alt="Converted line-art preview">
-                </div>
                 <div id="sketch-preview-box" class="sketch-preview-box">
                   <div class="sketch-preview-head">
                     <div>
@@ -1756,8 +1687,6 @@
         fileDrawBtn: document.getElementById('file-draw-btn'),
         fileMeta: document.getElementById('file-meta'),
         sketchOptimizationPreset: document.getElementById('sketch-optimization-preset'),
-        fileInputType: document.getElementById('file-input-type'),
-        colorLineartMethod: document.getElementById('color-lineart-method'),
         sketchPreviewGeometry: document.getElementById('sketch-preview-geometry'),
         sketchFitSafe: document.getElementById('sketch-fit-safe'),
         sketchOptimizeDraw: document.getElementById('sketch-optimize-draw'),
@@ -1782,12 +1711,6 @@
         pipelineModeLabel: document.getElementById('pipeline-mode-label'),
         advancedSketchSettings: document.getElementById('advanced-sketch-settings'),
         sketchExtractionMethod: document.getElementById('sketch-extraction-method'),
-        vectorizationEngine: document.getElementById('vectorization-engine'),
-        compareMethodsBtn: document.getElementById('compare-methods-btn'),
-        compareResults: document.getElementById('compare-results'),
-        convertedLineartBox: document.getElementById('converted-lineart-box'),
-        convertedLineartImg: document.getElementById('converted-lineart-img'),
-        convertedLineartNote: document.getElementById('converted-lineart-note'),
         sketchPreviewBox: document.getElementById('sketch-preview-box'),
         sketchPreviewTitle: document.getElementById('sketch-preview-title'),
         sketchPreviewNote: document.getElementById('sketch-preview-note'),
@@ -1873,7 +1796,6 @@
         currentInput: null,
         currentProcessingSettings: null,
         currentPipelineMode: null,
-        compareResults: [],
         previewDirty: false,
       };
 
@@ -1892,12 +1814,6 @@
           option.value = 'hysteresis_ink';
           option.textContent = 'Hysteresis Ink (Experimental)';
           dom.sketchExtractionMethod.appendChild(option);
-        }
-        if (dom.colorLineartMethod && !dom.colorLineartMethod.querySelector('option[value="opencv_edge_diagnostic"]')) {
-          const option = document.createElement('option');
-          option.value = 'opencv_edge_diagnostic';
-          option.textContent = 'OpenCV Edge Diagnostic';
-          dom.colorLineartMethod.appendChild(option);
         }
       }
 
@@ -1918,21 +1834,6 @@
       function pipelineDisplayName(payloadOrMode) {
         const payload = typeof payloadOrMode === 'string' ? { pipeline_mode: payloadOrMode } : (payloadOrMode || {});
         const mode = String(payload.pipeline_mode || payload.source_type || '').toLowerCase();
-        const inputType = String(payload.input_type || payload.detected_input_type || '').toLowerCase();
-        const metadata = payload.metadata || {};
-        const method = metadata.color_lineart_method || (metadata.color_lineart && metadata.color_lineart.color_lineart_method);
-        if (mode === 'local_outline_adaptive_centerline' || inputType === 'colored_image') {
-          if (method === 'photo_diagram_edges') {
-            return 'Photo / Diagram Edges → Adaptive Centerline';
-          }
-          if (method === 'simple_cartoon') {
-            return 'Simple Diagram Outline → Adaptive Centerline';
-          }
-          if (method === 'opencv_edge_diagnostic') {
-            return 'OpenCV Edge Diagnostic → Adaptive Centerline';
-          }
-          return 'Local Outline → Adaptive Centerline';
-        }
         if (mode === 'sketch_centerline') {
           return 'Adaptive Centerline';
         }
@@ -2554,13 +2455,6 @@
         if (dom.previewMetricsGrid) {
           dom.previewMetricsGrid.innerHTML = '';
         }
-        if (dom.convertedLineartBox) {
-          dom.convertedLineartBox.hidden = true;
-          dom.convertedLineartBox.classList.remove('active');
-        }
-        if (dom.convertedLineartImg) {
-          dom.convertedLineartImg.removeAttribute('src');
-        }
         if (dom.pipelineModeLabel) {
           dom.pipelineModeLabel.textContent = 'Adaptive Centerline';
         }
@@ -2676,13 +2570,6 @@
         }
         if (dom.sketchPreviewImg) {
           dom.sketchPreviewImg.removeAttribute('src');
-        }
-        if (dom.convertedLineartBox) {
-          dom.convertedLineartBox.hidden = true;
-          dom.convertedLineartBox.classList.remove('active');
-        }
-        if (dom.convertedLineartImg) {
-          dom.convertedLineartImg.removeAttribute('src');
         }
         if (dom.sketchPreviewDiag) {
           dom.sketchPreviewDiag.textContent = 'No sketch preview loaded yet.';
@@ -2874,7 +2761,6 @@
         if (dom.svgPreviewBtn) dom.svgPreviewBtn.disabled = !backendHealthy;
         if (dom.svgSubmitBtn) dom.svgSubmitBtn.disabled = !drawReady || state.activeTool !== 'svg';
         if (dom.fileUploadBtn) dom.fileUploadBtn.disabled = !backendHealthy;
-        if (dom.compareMethodsBtn) dom.compareMethodsBtn.disabled = !backendHealthy || state.activeTool !== 'file';
         if (dom.sketchOpenSvgBtn) dom.sketchOpenSvgBtn.disabled = !state.sketchPreviewUrl;
         if (dom.sketchDownloadSvgBtn) dom.sketchDownloadSvgBtn.disabled = !state.sketchPreviewUrl;
         if (dom.sketchDownloadMetricsBtn) dom.sketchDownloadMetricsBtn.disabled = !state.currentMetrics;
@@ -4018,7 +3904,6 @@
         const curveCount = Number(metadata.curve_primitive_count || 0);
         const lineCount = Number(metadata.line_primitive_count || 0);
         const extractionMethod = metadata.sketch_extraction_method || metadata.threshold_method || '--';
-        const vectorizationEngine = metadata.vectorization_engine || 'internal_centerline';
         const optimizer = (payload.metrics && payload.metrics.optimizer) || {};
         const warnings = Array.isArray(payload.warnings) && payload.warnings.length > 0
           ? ` · warnings ${payload.warnings.length}`
@@ -4026,7 +3911,7 @@
         const lines = [
           `Executable preview is generated from the same cached primitive payload Draw publishes.`,
           `Pipeline ${payload.pipeline_mode || 'sketch_centerline'} · safe fit ${metadata.fit_to_safe_area === false ? 'off' : 'on'} · bounds ${formatSketchBounds(payload.bounds)}`,
-          `Detail ${metadata.optimization_preset || '--'} · extraction ${extractionMethod} · engine ${vectorizationEngine} · optimizer ${optimizer.used || '--'} · smoothness ${metadata.preview_geometry_mode || '--'} · sensitivity ${Number.isFinite(lineSensitivity) ? lineSensitivity.toFixed(2) : '--'} · scale ${Number.isFinite(scalePercent) ? scalePercent.toFixed(0) : '--'}%`,
+          `Detail ${metadata.optimization_preset || '--'} · extraction ${extractionMethod} · optimizer ${optimizer.used || '--'} · smoothness ${metadata.preview_geometry_mode || '--'} · sensitivity ${Number.isFinite(lineSensitivity) ? lineSensitivity.toFixed(2) : '--'} · scale ${Number.isFinite(scalePercent) ? scalePercent.toFixed(0) : '--'}%`,
           `Debug sampled preview ${Number(preview.returned_point_count || 0)}/${Number(preview.original_point_count || 0)} pts${preview.truncated ? ' · truncated' : ''}; Draw uses the full cached backend plan.`,
           `Robot-safe ${formatSketchSafeBounds(metadata)} · skeleton ${metadata.skeleton_backend || '--'}${warnings}`,
           formatSketchTiming(metadata.timing).split('\n')[0],
@@ -4071,13 +3956,6 @@
         clearSketchBoardOverlay();
         dom.sketchPreviewImg.removeAttribute('src');
         dom.sketchPreviewImg.style.display = 'none';
-        if (dom.convertedLineartBox) {
-          dom.convertedLineartBox.hidden = true;
-          dom.convertedLineartBox.classList.remove('active');
-        }
-        if (dom.convertedLineartImg) {
-          dom.convertedLineartImg.removeAttribute('src');
-        }
         if (dom.sketchPreviewWarning) {
           dom.sketchPreviewWarning.textContent = '';
           dom.sketchPreviewWarning.classList.remove('active');
@@ -4144,28 +4022,6 @@
         dom.sketchPreviewBox.classList.add('active');
       }
 
-      function renderConvertedLineArtPreview(payload) {
-        if (!dom.convertedLineartBox || !dom.convertedLineartImg || !dom.convertedLineartNote) {
-          return;
-        }
-        const preview = payload && payload.converted_lineart_preview ? payload.converted_lineart_preview : null;
-        if (!preview || !preview.data_url) {
-          dom.convertedLineartBox.hidden = true;
-          dom.convertedLineartBox.classList.remove('active');
-          dom.convertedLineartImg.removeAttribute('src');
-          return;
-        }
-        dom.convertedLineartImg.src = String(preview.data_url);
-        const quality = preview.quality ? `Quality: ${preview.quality}` : 'Quality: unknown';
-        const profile = preview.profile ? `Profile: ${preview.profile}` : '';
-        const ratio = Number.isFinite(Number(preview.foreground_ratio))
-          ? `Foreground: ${(Number(preview.foreground_ratio) * 100).toFixed(1)}%`
-          : '';
-        dom.convertedLineartNote.textContent = [quality, profile, ratio].filter(Boolean).join(' · ');
-        dom.convertedLineartBox.hidden = false;
-        dom.convertedLineartBox.classList.add('active');
-      }
-
       function applySketchCenterlinePreview(payload) {
         const preview = payload.preview || {};
         state.sketchPreviewId = payload.preview_id || null;
@@ -4208,7 +4064,6 @@
           displayPlacement: { x: 0, y: 0, scale: 1 },
           rasterOverlay: null,
         };
-        renderConvertedLineArtPreview(payload);
         renderSketchPreviewSvg(payload);
         if (dom.pipelineModeLabel) {
           dom.pipelineModeLabel.textContent = pipelineDisplayName(payload);
@@ -4267,11 +4122,8 @@
       function readFilePreviewSettings() {
         const useAdvanced = DEBUG_MODE || String(dom.sketchOptimizationPreset.value || 'detail') === 'custom';
         const settings = {
-          input_type: String(dom.fileInputType.value || 'auto'),
-          color_lineart_method: String(dom.colorLineartMethod.value || 'auto_outline'),
           optimization_preset: String(dom.sketchOptimizationPreset.value || 'detail'),
           sketch_extraction_method: String(dom.sketchExtractionMethod.value || 'adaptive'),
-          vectorization_engine: String(dom.vectorizationEngine.value || 'internal_centerline'),
           preview_geometry_mode: String(dom.sketchPreviewGeometry.value || 'smooth_curves'),
           fit_to_safe_area: Boolean(dom.sketchFitSafe.checked),
           optimize_stroke_order: Boolean(dom.sketchOptimizeDraw.checked),
@@ -4325,7 +4177,7 @@
           upload: { original_filename: file.name },
           status: { state: 'ready', message: 'Executable preview ready.' },
         });
-        if (payload.pipeline_mode === 'sketch_centerline' || payload.pipeline_mode === 'local_outline_adaptive_centerline') {
+        if (payload.pipeline_mode === 'sketch_centerline') {
           applySketchCenterlinePreview(payload);
         } else {
           applyVectorPreview(payload.source_type || payload.input_type || 'file', payload, { origin: 'file', boardVisible: true });
@@ -4335,71 +4187,6 @@
       async function previewUploadedFile() {
         const file = dom.fileInput.files && dom.fileInput.files[0];
         await uploadAndPreviewFile(file);
-      }
-
-      function renderCompareResults(payload) {
-        if (!dom.compareResults) {
-          return;
-        }
-        const results = Array.isArray(payload && payload.results) ? payload.results : [];
-        state.compareResults = results;
-        if (!results.length) {
-          dom.compareResults.hidden = true;
-          dom.compareResults.innerHTML = '';
-          return;
-        }
-        dom.compareResults.innerHTML = results.map((result, index) => {
-          const canonicalGeometry = (result.canonical_geometry || {});
-          const executableGeometry = (result.executable_geometry || {});
-          const warnings = Array.isArray(result.warnings) && result.warnings.length
-            ? `<p>${escapeHtml(result.warnings.join(' · '))}</p>`
-            : '';
-          const useButton = result.payload && result.preview_id
-            ? `<button class="quiet-btn" type="button" data-compare-use="${index}">Use Preview</button>`
-            : '';
-          return [
-            '<div class="compare-result">',
-            `<strong>${escapeHtml(result.engine_name || 'engine')}</strong>`,
-            `<p>${result.available ? 'available' : 'not installed'}</p>`,
-            `<p>${formatCount(executableGeometry.draw_path_count || 0)} paths · ${formatCount(executableGeometry.sampled_point_count || 0)} samples</p>`,
-            `<p>${formatCount(canonicalGeometry.total_curve_count || 0)} curves · ${formatCount(canonicalGeometry.line_count || 0)} canonical lines</p>`,
-            warnings,
-            useButton,
-            '</div>',
-          ].join('');
-        }).join('');
-        dom.compareResults.querySelectorAll('[data-compare-use]').forEach((button) => {
-          button.addEventListener('click', () => {
-            const index = Number(button.getAttribute('data-compare-use'));
-            const result = state.compareResults[index];
-            if (result && result.payload) {
-              applySketchCenterlinePreview(result.payload);
-            }
-          });
-        });
-        dom.compareResults.hidden = false;
-      }
-
-      async function compareUploadedFileMethods() {
-        const file = dom.fileInput.files && dom.fileInput.files[0];
-        if (!file) {
-          setSketchPreviewInlineStatus('error', 'Choose an SVG or raster image first.');
-          throw new Error('Choose an SVG or raster image first.');
-        }
-        const form = new FormData();
-        form.append('file', file);
-        form.append('settings_json', JSON.stringify(readFilePreviewSettings()));
-        form.append('engines_json', JSON.stringify(
-          DEBUG_MODE
-            ? ['internal_centerline', 'autotrace_centerline', 'potrace_bw', 'vtracer_svg']
-            : ['internal_centerline']
-        ));
-        const payload = await apiRequest('/api/preview/compare', {
-          method: 'POST',
-          body: form,
-        });
-        renderCompareResults(payload);
-        setNotice('success', 'Compare complete', 'Compare Methods returned per-engine availability and metrics.');
       }
 
       async function drawUploadedFile() {
@@ -4503,10 +4290,7 @@
 
       [
         dom.sketchOptimizationPreset,
-        dom.fileInputType,
-        dom.colorLineartMethod,
         dom.sketchExtractionMethod,
-        dom.vectorizationEngine,
         dom.sketchPreviewGeometry,
         dom.sketchFitSafe,
         dom.sketchOptimizeDraw,
@@ -4533,14 +4317,14 @@
         input.addEventListener('input', () => {
           syncSketchAdvancedVisibility();
           syncSketchResolutionReadout();
-          if (state.currentPipelineMode === 'sketch_centerline' || state.currentPipelineMode === 'local_outline_adaptive_centerline' || state.activeTool === 'file') {
+          if (state.currentPipelineMode === 'sketch_centerline' || state.activeTool === 'file') {
             markPreviewSettingsChanged();
           }
         });
         input.addEventListener('change', () => {
           syncSketchAdvancedVisibility();
           syncSketchResolutionReadout();
-          if (state.currentPipelineMode === 'sketch_centerline' || state.currentPipelineMode === 'local_outline_adaptive_centerline' || state.activeTool === 'file') {
+          if (state.currentPipelineMode === 'sketch_centerline' || state.activeTool === 'file') {
             markPreviewSettingsChanged();
           }
         });
@@ -4549,10 +4333,6 @@
       dom.fileInput.addEventListener('change', () => {
         markPreviewSettingsChanged();
         resetSketchDrawState('Draw is unavailable until Generate Preview runs for this file.');
-        if (dom.compareResults) {
-          dom.compareResults.hidden = true;
-          dom.compareResults.innerHTML = '';
-        }
         refreshUiState();
       });
 
@@ -4636,14 +4416,6 @@
           await previewSketchCenterlineFile(file);
         } catch (error) {
           handleError('Generate preview failed', error);
-        }
-      });
-
-      dom.compareMethodsBtn.addEventListener('click', async () => {
-        try {
-          await compareUploadedFileMethods();
-        } catch (error) {
-          handleError('Compare methods failed', error);
         }
       });
 

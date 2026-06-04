@@ -41,14 +41,14 @@ def _port_is_available(port: int) -> bool:
         sock.close()
 
 
-def _select_webots_port(requested_port: int, *, attempts: int = 32) -> int:
+def _select_available_port(requested_port: int, *, attempts: int = 32, label: str = 'TCP') -> int:
     base = max(1024, int(requested_port))
     for offset in range(attempts):
         candidate = base + offset
         if _port_is_available(candidate):
             return candidate
     raise RuntimeError(
-        f'Unable to find a free Webots port starting at {base} (checked {attempts} ports).'
+        f'Unable to find a free {label} port starting at {base} (checked {attempts} ports).'
     )
 
 
@@ -129,9 +129,8 @@ def _cleanup_stale_launch_processes() -> None:
     A crashed web_server or a tab that kept its WebSocket alive past the
     launcher's grace period can leave the listening socket in TIME_WAIT,
     which forces the next launch to fall back to port 8081 / 8082 and
-    breaks the VS Code Ports panel auto-forward (we only forward 8080 and
-    9090). Clearing those stragglers up front makes "ros2 launch" feel
-    deterministic again.
+    breaks the VS Code Ports panel auto-forward. Clearing those stragglers
+    up front makes "ros2 launch" feel deterministic again.
 
     This is a best-effort cleanup; failures are silently ignored so a
     fresh first launch still works. We deliberately do NOT match the
@@ -168,18 +167,33 @@ def generate_launch_description():
     pkg_dir = get_package_share_directory(package_name)
     shared = load_shared_config()
     requested_webots_port = os.environ.get('WEBOTS_PORT', '1234')
+    requested_rosbridge_port = os.environ.get('ROSBRIDGE_PORT', '9090')
     try:
-        selected_webots_port = _select_webots_port(int(requested_webots_port))
+        selected_webots_port = _select_available_port(
+            int(requested_webots_port),
+            label='Webots',
+        )
+        selected_rosbridge_port = _select_available_port(
+            int(requested_rosbridge_port),
+            label='rosbridge',
+        )
     except ValueError as exc:
         raise RuntimeError(
-            f'WEBOTS_PORT must be an integer, got {requested_webots_port!r}.'
+            'WEBOTS_PORT and ROSBRIDGE_PORT must be integers; got '
+            f'WEBOTS_PORT={requested_webots_port!r}, ROSBRIDGE_PORT={requested_rosbridge_port!r}.'
         ) from exc
     display_environment = _resolve_webots_display_environment()
     webots_port = str(selected_webots_port)
+    rosbridge_port = int(selected_rosbridge_port)
     if webots_port != requested_webots_port:
         print(
             f'[wall_climber.launch] Requested Webots port {requested_webots_port} is busy; '
             f'using {webots_port} instead.'
+        )
+    if str(rosbridge_port) != requested_rosbridge_port:
+        print(
+            f'[wall_climber.launch] Requested rosbridge port {requested_rosbridge_port} is busy; '
+            f'using {rosbridge_port} instead.'
         )
     selected_display = display_environment.get('DISPLAY')
     current_display = os.environ.get('DISPLAY')
@@ -259,6 +273,7 @@ def generate_launch_description():
         # them explicitly here picks the future-default behaviour now and
         # silences the warnings.
         parameters=[{
+            'port': rosbridge_port,
             'default_call_service_timeout': 5.0,
             'call_services_in_new_thread': True,
             'send_action_goals_in_new_thread': True,
@@ -271,6 +286,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'port': 8080},
+            {'rosbridge_port': rosbridge_port},
             {'initial_mode': ParameterValue(writer_mode, value_type=str)},
             {'enable_webots_trail': ParameterValue(enable_webots_trail, value_type=bool)},
             {'open_browser': False},

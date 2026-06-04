@@ -8,7 +8,6 @@ from typing import Iterable
 import cv2  # type: ignore
 import numpy
 
-from wall_climber.image_pipeline._filled_regions import split_filled_and_thin
 from wall_climber.image_pipeline._preprocess import enhance_for_extraction
 from wall_climber.image_pipeline._stroke_order import (
     Stroke as _OrderingStroke,
@@ -1091,7 +1090,6 @@ def vectorize_sketch_image_to_plan(
     fit_bounds_m: BoundsM | None = None,
     validation_bounds_m: BoundsM | None = None,
     enable_preprocessing: bool | None = None,
-    enable_filled_outline: bool | None = None,
     enable_stroke_reorder: bool | None = None,
     enable_skeleton_smoothing: bool | None = None,
 ) -> DrawingPathPlan:
@@ -1129,19 +1127,15 @@ def vectorize_sketch_image_to_plan(
     else:
         effective_skeleton_prune_px = max(0.0, float(skeleton_prune_px))
 
-    # Phase-3 quality enhancements (preprocessing, filled-outline detection,
-    # 2-opt stroke reordering) are auto-enabled by every non-raw preset.
-    # They were originally opt-in while we validated end-to-end behaviour
-    # on the live robot; that validation is now done. Callers can still
-    # override individually via the explicit kwargs.
+    # Phase-3 quality enhancements (preprocessing, 2-opt stroke reordering,
+    # skeleton smoothing) are auto-enabled by every non-raw preset. They
+    # were originally opt-in while we validated end-to-end behaviour on the
+    # live robot; that validation is now done. Callers can still override
+    # individually via the explicit kwargs.
     preset_enables_phase3 = resolved_preset in {'detail', 'balanced', 'fast'}
     effective_enable_preprocessing = (
         preset_enables_phase3 if enable_preprocessing is None
         else bool(enable_preprocessing)
-    )
-    effective_enable_filled_outline = (
-        preset_enables_phase3 if enable_filled_outline is None
-        else bool(enable_filled_outline)
     )
     effective_enable_stroke_reorder = (
         preset_enables_phase3 if enable_stroke_reorder is None
@@ -1185,35 +1179,8 @@ def vectorize_sketch_image_to_plan(
     )
     mark(stage_started, 'cleanup_time_ms')
 
-    # Optionally split filled regions out and replace them with their outline,
-    # so a black filled circle draws as a circle outline rather than a single
-    # skeletonization point. The thin part still passes through skeletonize
-    # for normal stroke recovery.
-    filled_outline_metadata: dict[str, object] = {
-        'filled_outline_enabled': bool(effective_enable_filled_outline),
-        'filled_component_count': 0,
-        'thin_component_count': 0,
-        'filled_outline_pixel_count': 0,
-    }
-    skeleton_input_binary = cleaned_binary
-    if effective_enable_filled_outline:
-        stage_started = time.perf_counter()
-        split = split_filled_and_thin(cleaned_binary)
-        filled_outline_metadata.update(
-            {
-                'filled_component_count': int(split.filled_component_count),
-                'thin_component_count': int(split.thin_component_count),
-                'filled_outline_pixel_count': int(numpy.count_nonzero(split.outline_mask)),
-            }
-        )
-        # Combine: thin foreground stays as-is, filled regions are replaced
-        # with their 1-px outline. Skeletonize is idempotent on a 1-px curve,
-        # so this is safe to run through the rest of the pipeline.
-        skeleton_input_binary = numpy.maximum(split.thin_mask, split.outline_mask)
-        mark(stage_started, 'filled_outline_time_ms')
-
     stage_started = time.perf_counter()
-    skeleton, skeleton_backend = _skeletonize_foreground(skeleton_input_binary)
+    skeleton, skeleton_backend = _skeletonize_foreground(cleaned_binary)
     mark(stage_started, 'skeleton_time_ms')
 
     stage_started = time.perf_counter()
@@ -1383,7 +1350,6 @@ def vectorize_sketch_image_to_plan(
         'warnings': tuple(warnings),
         **threshold_metadata,
         **component_metadata,
-        **filled_outline_metadata,
         **skeleton_prune_metadata,
         **smoothing_metadata,
         **stroke_reorder_metadata,

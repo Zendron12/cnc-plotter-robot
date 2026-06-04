@@ -271,11 +271,13 @@ class WebBackendNode(Node):
         super().__init__('web_ui_server')
         self._shared = load_shared_config()
         self.declare_parameter('port', 8080)
+        self.declare_parameter('rosbridge_port', 9090)
         self.declare_parameter('initial_mode', MODE_OFF)
         self.declare_parameter('enable_webots_trail', False)
         self.declare_parameter('open_browser', False)
 
         self.port = int(self.get_parameter('port').value)
+        self.rosbridge_port = int(self.get_parameter('rosbridge_port').value)
         self.enable_webots_trail = bool(self.get_parameter('enable_webots_trail').value)
         self.open_browser = bool(self.get_parameter('open_browser').value)
         requested_mode = str(self.get_parameter('initial_mode').value).strip().lower()
@@ -1434,8 +1436,19 @@ def _sketch_preview_svg(
     *,
     board_width_m: float,
     board_height_m: float,
+    pen_tip_radius_m: float | None = None,
 ) -> str:
-    stroke_width = max(float(board_width_m), float(board_height_m)) / 360.0
+    # Match the simulated pen's physical line width so that the preview
+    # the user sees is what the robot will actually draw. Pen lines are
+    # drawn in board-space metres (the SVG viewBox is in metres), so the
+    # stroke width below is 2 × tip_radius in metres. A 3 mm tip
+    # therefore renders as a 6 mm-wide stroke in the preview, which is
+    # exactly what the carriage will leave on the board.
+    if pen_tip_radius_m is not None and pen_tip_radius_m > 0.0:
+        stroke_width = 2.0 * float(pen_tip_radius_m)
+    else:
+        # Legacy fallback when the caller has not supplied a tip radius.
+        stroke_width = max(float(board_width_m), float(board_height_m)) / 360.0
     polylines: list[str] = []
     for stroke in preview_strokes:
         if len(stroke) < 2:
@@ -1476,8 +1489,14 @@ def _smooth_sketch_preview_svg(
     *,
     board_width_m: float,
     board_height_m: float,
+    pen_tip_radius_m: float | None = None,
 ) -> str:
-    stroke_width = max(float(board_width_m), float(board_height_m)) / 360.0
+    # Match the simulated pen's physical line width — see
+    # _sketch_preview_svg() for the rationale.
+    if pen_tip_radius_m is not None and pen_tip_radius_m > 0.0:
+        stroke_width = 2.0 * float(pen_tip_radius_m)
+    else:
+        stroke_width = max(float(board_width_m), float(board_height_m)) / 360.0
     paths: list[str] = []
     current: list[str] = []
     pen_down = False
@@ -1587,6 +1606,7 @@ def _execution_preview_svg_from_sampled_paths(
     *,
     board_width_m: float,
     board_height_m: float,
+    pen_tip_radius_m: float | None = None,
 ) -> str:
     draw_strokes = [
         [
@@ -1600,6 +1620,7 @@ def _execution_preview_svg_from_sampled_paths(
         draw_strokes,
         board_width_m=board_width_m,
         board_height_m=board_height_m,
+        pen_tip_radius_m=pen_tip_radius_m,
     )
 
 
@@ -1710,6 +1731,7 @@ def _sketch_preview_response(
     preview_geometry_mode: str,
     use_smooth_svg: bool,
     curve_metadata: dict[str, Any] | None = None,
+    pen_tip_radius_m: float | None = None,
 ) -> dict[str, Any]:
     preview = _sketch_preview_strokes(plan)
     metadata = dict(plan.metadata)
@@ -1734,12 +1756,14 @@ def _sketch_preview_response(
             canonical_plan,
             board_width_m=board_width_m,
             board_height_m=board_height_m,
+            pen_tip_radius_m=pen_tip_radius_m,
         )
         if use_smooth_svg
         else _sketch_preview_svg(
             preview['strokes'],
             board_width_m=board_width_m,
             board_height_m=board_height_m,
+            pen_tip_radius_m=pen_tip_radius_m,
         )
     )
     return {
@@ -2064,6 +2088,7 @@ def create_app(runtime: BackendRuntime) -> FastAPI:
                 sampled_paths,
                 board_width_m=float(shared.board.width),
                 board_height_m=float(shared.board.height),
+                pen_tip_radius_m=float(shared.pen.tip_radius),
             ),
             'execution_hash': execution_hash,
             'settings_hash': settings_hash(effective_settings_payload),
@@ -2311,7 +2336,8 @@ def create_app(runtime: BackendRuntime) -> FastAPI:
             return
 
         try:
-            async with websockets.connect('ws://127.0.0.1:9090', max_size=None) as upstream:
+            upstream_url = f'ws://127.0.0.1:{runtime.node.rosbridge_port}'
+            async with websockets.connect(upstream_url, max_size=None) as upstream:
                 async def client_to_upstream() -> None:
                     try:
                         while True:
@@ -2686,6 +2712,7 @@ def create_app(runtime: BackendRuntime) -> FastAPI:
                 preview_geometry_mode=sketch_preview_geometry_mode,
                 use_smooth_svg=sketch_preview_geometry_mode == 'smooth_curves',
                 curve_metadata=curve_metadata,
+                pen_tip_radius_m=float(shared.pen.tip_radius),
             )
             response_payload['detected_input_type'] = effective_input_type
             generic_entry = _store_preview(

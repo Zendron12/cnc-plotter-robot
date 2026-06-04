@@ -55,7 +55,6 @@ def test_detail_preset_enables_all_quality_stages() -> None:
     )
     metadata = plan.metadata
     assert metadata['preprocessing_enabled'] is True
-    assert metadata['filled_outline_enabled'] is True
     assert metadata['stroke_reorder_enabled'] is True
     assert metadata['skeleton_smoothing_enabled'] is True
 
@@ -69,7 +68,6 @@ def test_balanced_preset_also_enables_phase3() -> None:
     )
     metadata = plan.metadata
     assert metadata['preprocessing_enabled'] is True
-    assert metadata['filled_outline_enabled'] is True
     assert metadata['stroke_reorder_enabled'] is True
     assert metadata['skeleton_smoothing_enabled'] is True
 
@@ -83,7 +81,6 @@ def test_fast_preset_also_enables_phase3() -> None:
     )
     metadata = plan.metadata
     assert metadata['preprocessing_enabled'] is True
-    assert metadata['filled_outline_enabled'] is True
     assert metadata['stroke_reorder_enabled'] is True
     assert metadata['skeleton_smoothing_enabled'] is True
 
@@ -97,7 +94,6 @@ def test_raw_preset_disables_all_quality_stages_by_default() -> None:
     )
     metadata = plan.metadata
     assert metadata['preprocessing_enabled'] is False
-    assert metadata['filled_outline_enabled'] is False
     assert metadata['stroke_reorder_enabled'] is False
     assert metadata['skeleton_smoothing_enabled'] is False
 
@@ -109,32 +105,13 @@ def test_explicit_overrides_take_precedence_over_preset_defaults() -> None:
         board_height_m=1.5,
         optimization_preset='detail',
         enable_preprocessing=False,
-        enable_filled_outline=False,
         enable_stroke_reorder=False,
         enable_skeleton_smoothing=False,
     )
     metadata = plan.metadata
     assert metadata['preprocessing_enabled'] is False
-    assert metadata['filled_outline_enabled'] is False
     assert metadata['stroke_reorder_enabled'] is False
     assert metadata['skeleton_smoothing_enabled'] is False
-
-
-def test_filled_disc_under_otsu_produces_outline_strokes() -> None:
-    """A solid disc should be drawn as an outline, not collapsed to a dot."""
-    plan = vectorize_sketch_image_to_plan(
-        _filled_disc_image(),
-        board_width_m=2.0,
-        board_height_m=1.5,
-        optimization_preset='detail',
-        sketch_extraction_method='otsu',
-    )
-    metadata = plan.metadata
-    assert metadata['filled_component_count'] >= 1
-    assert metadata['filled_outline_pixel_count'] > 100
-    # The drawn perimeter should be substantial (the disc has a visible outline)
-    # rather than a degenerate single dot.
-    assert plan.metrics.total_drawing_length_m > 1.0
 
 
 def test_stroke_reorder_does_not_increase_pen_up_travel() -> None:
@@ -245,31 +222,6 @@ def test_skeleton_smoothing_returns_subpixel_floats() -> None:
     smoothed = _smooth_pixel_stroke(raw)
     assert isinstance(smoothed[4][1], float)
     assert abs(smoothed[4][1] - 3.75) < 1.0e-9
-
-
-def test_filled_donut_emits_both_outer_and_inner_contours() -> None:
-    """A ring-shaped (donut) component must surface both its outer and
-    inner edge so the artist's intentional hole is preserved. Earlier
-    the splitter used cv2.RETR_EXTERNAL which only produced the outer
-    contour, collapsing donuts to filled disks."""
-    from wall_climber.image_pipeline._filled_regions import split_filled_and_thin
-
-    img = np.zeros((400, 400), dtype=np.uint8)
-    cv2.circle(img, (200, 200), 80, 255, thickness=-1)
-    cv2.circle(img, (200, 200), 30, 0, thickness=-1)  # punch hole
-
-    split = split_filled_and_thin(img)
-    outline_pixels = int(np.count_nonzero(split.outline_mask))
-
-    # Outer circle perimeter on the integer pixel grid traces out around
-    # 503 px on its own; a combined outer+inner trace lands well above
-    # that. We require >550 to assert the inner contour is present without
-    # being brittle to grid quantisation.
-    assert split.filled_component_count == 1
-    assert outline_pixels > 550, (
-        f'donut should surface inner+outer contours; '
-        f'outer-only would be ~503 px, got {outline_pixels}.'
-    )
 
 
 def test_spur_prune_on_clean_diagonal_does_not_over_prune() -> None:

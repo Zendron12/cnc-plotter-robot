@@ -250,6 +250,28 @@ class CableSupervisorPlugin:
         except Exception:
             self._root_children = None
 
+        # Corner-motor status lights. Each base plate carries a DEF'd
+        # PBRAppearance whose baseColor/emissiveColor we flip green (the
+        # carriage is moving / drawing) or red (idle). Bound lazily on the
+        # first status update because the scene tree may not be fully loaded
+        # at construction time.
+        self._status_light_defs = (
+            'STATUS_LIGHT_TL',
+            'STATUS_LIGHT_TR',
+            'STATUS_LIGHT_BL',
+            'STATUS_LIGHT_BR',
+        )
+        self._status_light_appearances = None
+        self._status_light_state = None
+        # Carriage position at the previous Webots step, used to decide whether
+        # the carriage is actually moving (green light) or parked (red light).
+        self._status_light_prev_center = None
+        # How many consecutive idle steps before we go red, and the minimum
+        # displacement (m) per step that still counts as "moving". A few steps
+        # of grace avoids flicker between closely-spaced setpoints.
+        self._status_idle_grace_steps = 8
+        self._status_idle_counter = 0
+
         self._base_board_info = {
             'frame_origin': 'top_left',
             'frame_x_axis': 'right',
@@ -309,6 +331,71 @@ class CableSupervisorPlugin:
         msg = String()
         msg.data = status
         self._status_pub.publish(msg)
+
+    def _bind_status_lights(self):
+        if self._status_light_appearances is not None:
+            return self._status_light_appearances
+        appearances = []
+        for def_name in self._status_light_defs:
+            node = None
+            try:
+                node = self._supervisor.getFromDef(def_name)
+            except Exception:
+                node = None
+            if node is not None:
+                appearances.append(node)
+        # Only cache once we actually found them, so a too-early call retries.
+        if appearances:
+            self._status_light_appearances = appearances
+        return appearances
+
+    def _update_status_lights(self, moving: bool):
+        # ``moving`` is decided by actual carriage displacement in step(), not
+        # by the status string: when the robot finishes and parks, the executor
+        # keeps republishing the same setpoint (status stays 'tracking') even
+        # though the carriage is stationary, so a string check would never go
+        # back to red. Displacement-based detection turns the light red as soon
+        # as the carriage stops moving.
+        if self._status_light_state == moving:
+            return
+        appearances = self._bind_status_lights()
+        if not appearances:
+            return
+        if moving:
+            base_color = [0.15, 0.85, 0.25]
+            emissive = [0.10, 0.70, 0.18]
+        else:
+            base_color = [0.90, 0.12, 0.12]
+            emissive = [0.75, 0.06, 0.06]
+        for appearance in appearances:
+            try:
+                appearance.getField('baseColor').setSFColor(base_color)
+                appearance.getField('emissiveColor').setSFColor(emissive)
+            except Exception:
+                # If a field is momentarily unavailable, retry next transition.
+                self._status_light_appearances = None
+                return
+        self._status_light_state = moving
+
+    def _update_motion_lights(self):
+        # Decide green/red from real carriage displacement this step. A short
+        # grace counter keeps the light green across tiny pauses between
+        # consecutive setpoints, then flips it red once the carriage has been
+        # stationary for several steps (i.e. the robot finished and parked).
+        center = self._current_center
+        prev = self._status_light_prev_center
+        self._status_light_prev_center = (center[0], center[1])
+        if prev is None:
+            self._update_status_lights(False)
+            return
+        moved = math.hypot(center[0] - prev[0], center[1] - prev[1])
+        if moved > 1.0e-5:
+            self._status_idle_counter = 0
+            self._update_status_lights(True)
+        else:
+            self._status_idle_counter += 1
+            if self._status_idle_counter >= self._status_idle_grace_steps:
+                self._update_status_lights(False)
 
     def _point_map_json(self, points):
         return {
@@ -1011,6 +1098,7 @@ class CableSupervisorPlugin:
         self._publish_robot_pose(self._current_center[0], self._current_center[1])
         self._update_cable_visuals(self._current_center[0], self._current_center[1])
         self._update_pen_state()
+        self._update_motion_lights()
         self._cleanup_trail_if_disabled()
 
     def cleanup(self):
