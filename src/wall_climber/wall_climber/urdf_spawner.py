@@ -53,8 +53,8 @@ _FACE_DISPLAY_NODE = '''    Display {
         }
       ]
       name "face_display"
-      width 256
-      height 128
+      width 512
+      height 256
     }
 '''
 

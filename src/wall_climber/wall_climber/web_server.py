@@ -28,6 +28,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.datastructures import Headers as _StarletteHeaders
 
 try:
     import websockets
@@ -163,6 +164,8 @@ from wall_climber.runtime_topics import (
 )
 from wall_climber.shared_config import load_shared_config
 from wall_climber.vector_pipeline import VectorPlacement
+from wall_climber.draw_library import DrawLibrary
+from wall_climber import voice_transcribe as _voice_transcribe
 
 
 _ACTIVE_MODE_QOS = QoSProfile(
@@ -184,6 +187,7 @@ _MAX_POINTS_PER_STROKE = 2048
 _MAX_TOTAL_POINTS = 8192
 _SEGMENT_EPS_M = 1.0e-4
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+_MAX_AUDIO_BYTES = 10 * 1024 * 1024
 _MAX_SVG_BYTES = 256 * 1024
 _MAX_VECTOR_REQUEST_BYTES = 512 * 1024
 _SKETCH_PREVIEW_MAX_POINTS = 2400
@@ -201,18 +205,8 @@ _REQUIRED_STATUS_KEYS = (
 _FACE_TEXT_TOPIC = '/wall_climber/face/text'
 _FACE_EXPRESSION_TOPIC = '/wall_climber/face/expression'
 _FACE_VALID_EXPRESSIONS = {
-    'happy',
-    'smile',
-    'ready',
-    'neutral',
-    'sleep',
-    'sleepy',
-    'closed',
-    'angry',
-    'focus',
-    'focused',
-    'sad',
-    'error',
+    'idle',
+    'nyan',
 }
 _FACE_MAX_TEXT_CHARS = 18
 
@@ -1823,6 +1817,9 @@ def create_app(runtime: BackendRuntime) -> FastAPI:
         max_entries=int(_SKETCH_PREVIEW_CACHE_MAX_ENTRIES),
         ttl_seconds=float(_SKETCH_PREVIEW_CACHE_TTL_SECONDS),
     )
+    # Named-image library for the voice "draw picture number N" flow. Resolved
+    # under the installed package share dir so it works after colcon build.
+    draw_library = DrawLibrary(runtime.web_dir.parent / 'assets' / 'draw_library')
 
     def _preview_optimization_policy(source_type: str) -> CanonicalOptimizationPolicy:
         if source_type == 'sketch_centerline':
@@ -2439,6 +2436,8 @@ def create_app(runtime: BackendRuntime) -> FastAPI:
         tiny_detail_candidate_max_feature_m: Optional[float] = Form(None),
         tiny_detail_expand_mode: Optional[str] = Form(None),
         tiny_detail_max_expansions: Optional[int] = Form(None),
+        thin_line_min_width_mm: Optional[float] = Form(None),
+        enable_face_handling: Optional[bool] = Form(None),
         requested_input_type: Optional[str] = None,
     ) -> JSONResponse:
         try:
@@ -2581,6 +2580,17 @@ def create_app(runtime: BackendRuntime) -> FastAPI:
                     maximum=float(shared.board.height),
                 )
             )
+            sketch_thin_line_min_width_mm = _coerce_float(
+                0.0 if thin_line_min_width_mm is None else thin_line_min_width_mm,
+                field_name='thin_line_min_width_mm',
+                minimum=0.0,
+                maximum=6.0,
+            )
+            sketch_enable_face_handling = _coerce_bool(
+                True if enable_face_handling is None else enable_face_handling,
+                field_name='enable_face_handling',
+                default=True,
+            )
             sketch_parameters = {
                 'margin_m': sketch_margin_m,
                 'max_image_dim': sketch_max_image_dim,
@@ -2608,6 +2618,8 @@ def create_app(runtime: BackendRuntime) -> FastAPI:
                 'tiny_detail_candidate_max_feature_m': tiny_detail_candidate_max_feature_m,
                 'tiny_detail_expand_mode': tiny_detail_expand_mode,
                 'tiny_detail_max_expansions': tiny_detail_max_expansions,
+                'thin_line_min_width_mm': sketch_thin_line_min_width_mm,
+                'enable_face_handling': sketch_enable_face_handling,
             }
             try:
                 # Every uploaded raster is treated as a sketch. Colored
@@ -2642,6 +2654,8 @@ def create_app(runtime: BackendRuntime) -> FastAPI:
                     center_y_m=sketch_center_y_m,
                     fit_bounds_m=sketch_fit_bounds,
                     validation_bounds_m=sketch_safe_bounds,
+                    thin_line_min_width_mm=sketch_thin_line_min_width_mm,
+                    enable_face_handling=sketch_enable_face_handling,
                 )
                 plan.metadata.update(
                     {
@@ -3299,6 +3313,8 @@ def create_app(runtime: BackendRuntime) -> FastAPI:
                 tiny_detail_candidate_max_feature_m=settings.get('tiny_detail_candidate_max_feature_m'),
                 tiny_detail_expand_mode=settings.get('tiny_detail_expand_mode'),
                 tiny_detail_max_expansions=settings.get('tiny_detail_max_expansions'),
+                thin_line_min_width_mm=settings.get('thin_line_min_width_mm'),
+                enable_face_handling=settings.get('enable_face_handling'),
                 requested_input_type=requested_input_type,
             )
 
@@ -3341,6 +3357,117 @@ def create_app(runtime: BackendRuntime) -> FastAPI:
         leaving text mode."""
         runtime.set_text_cursor(None, None)
         return JSONResponse({'ok': True, 'text_cursor': None})
+
+    @app.post('/api/draw_library/{identifier}')
+    async def draw_from_library(identifier: int) -> JSONResponse:
+        """Resolve a named-library image by numeric id and draw it through the
+        same image-to-plan pipeline as an uploaded image (voice "draw picture
+        number N" flow)."""
+        entry = draw_library.resolve(identifier)
+        if entry is None:
+            raise HTTPException(
+                status_code=404, detail=f'picture number {identifier} was not found'
+            )
+        try:
+            image_bytes = draw_library.load_image_bytes(entry)
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f'image file for picture {identifier} is missing: {exc}',
+            )
+        except (OSError, ValueError) as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f'image file for picture {identifier} is unreadable: {exc}',
+            )
+
+        suffix = Path(entry.file).suffix.lower()
+        content_type = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.webp': 'image/webp',
+        }.get(suffix, 'image/png')
+        upload = UploadFile(
+            file=io.BytesIO(image_bytes),
+            filename=Path(entry.file).name,
+            headers=_StarletteHeaders({'content-type': content_type}),
+        )
+        # Reuse the existing sketch preview path, then draw the cached preview
+        # via the same execution path as an uploaded-image draw. All optional
+        # params are passed explicitly as None so the backend applies its own
+        # defaults (calling the closure directly bypasses FastAPI's Form()
+        # default resolution).
+        preview_response = await preview_sketch_centerline(
+            file=upload,
+            margin_m=None,
+            max_image_dim=None,
+            min_component_area_px=None,
+            min_stroke_length_px=None,
+            simplify_epsilon_px=None,
+            line_sensitivity=None,
+            sketch_extraction_method=None,
+            skeleton_prune_px=None,
+            merge_gap_px=None,
+            merge_max_angle_deg=None,
+            optimization_preset=None,
+            preview_geometry_mode=None,
+            curve_tolerance_px=None,
+            curve_tolerance_m=None,
+            scale_percent=None,
+            center_x_m=None,
+            center_y_m=None,
+            fit_to_safe_area=None,
+            optimize_stroke_order=None,
+            path_optimizer=None,
+            preserve_tiny_details=None,
+            minimum_drawable_feature_m=None,
+            tiny_detail_candidate_max_feature_m=None,
+            tiny_detail_expand_mode=None,
+            tiny_detail_max_expansions=None,
+            thin_line_min_width_mm=None,
+            enable_face_handling=None,
+            requested_input_type='sketch_image',
+        )
+        preview_payload = json.loads(bytes(preview_response.body))
+        preview_id = preview_payload.get('preview_id')
+        if not preview_id:
+            raise HTTPException(status_code=500, detail='failed to build a preview for the library image')
+        cache_entry = _load_preview(preview_id)
+        result = _draw_cached_preview_response(cache_entry)
+        result['draw_library'] = {
+            'id': entry.id,
+            'name': entry.name,
+            'file': entry.file,
+        }
+        return JSONResponse(result)
+
+    @app.post('/api/voice/transcribe')
+    async def voice_transcribe_endpoint(file: UploadFile = File(...)) -> JSONResponse:
+        """Transcribe spoken English audio to text via the self-hosted
+        faster-whisper engine. Returns 503 when the engine/model is unavailable
+        so the web UI can fall back to the browser Web Speech API."""
+        content = await file.read(_MAX_AUDIO_BYTES + 1)
+        if not content:
+            raise HTTPException(status_code=422, detail='audio upload is empty')
+        if len(content) > _MAX_AUDIO_BYTES:
+            raise HTTPException(status_code=413, detail='audio upload exceeds the maximum allowed size')
+        normalized = _voice_transcribe.normalize_content_type(file.content_type)
+        if normalized and normalized not in _voice_transcribe.SUPPORTED_CONTENT_TYPES:
+            allowed = ', '.join(sorted(_voice_transcribe.SUPPORTED_CONTENT_TYPES))
+            raise HTTPException(
+                status_code=422,
+                detail=f'audio content-type must be one of: {allowed}',
+            )
+        try:
+            result = _voice_transcribe.transcribe_audio(content, file.content_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        except _voice_transcribe.TranscriptionUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        return JSONResponse(
+            {'ok': True, 'text': result['text'], 'engine': result['engine']}
+        )
 
     @app.post('/api/manual/pen')
     async def set_manual_pen_mode(request: Request) -> JSONResponse:

@@ -58,57 +58,6 @@
     </visual>
   </xacro:macro>
 
-  <xacro:macro name="body_cable_mount" params="link_name">
-    <link name="${link_name}">
-      <visual>
-        <origin xyz="0 0 0" rpy="0 0 0"/>
-        <geometry>
-          <cylinder radius="0.0046" length="0.0032"/>
-        </geometry>
-        <material name="${link_name}_head_mat">
-          <color rgba="0.72 0.75 0.80 1.0"/>
-        </material>
-      </visual>
-      <visual>
-        <origin xyz="0 0 0.0030" rpy="0 0 0"/>
-        <geometry>
-          <cylinder radius="0.0023" length="0.0060"/>
-        </geometry>
-        <material name="${link_name}_neck_mat">
-          <color rgba="0.18 0.20 0.24 1.0"/>
-        </material>
-      </visual>
-      <visual>
-        <origin xyz="0 0 0.0064" rpy="0 0 0"/>
-        <geometry>
-          <cylinder radius="0.0057" length="0.0028"/>
-        </geometry>
-        <material name="${link_name}_base_mat">
-          <color rgba="0.14 0.16 0.19 1.0"/>
-        </material>
-      </visual>
-      <visual>
-        <origin xyz="0 0 0.0079" rpy="0 0 0"/>
-        <geometry>
-          <box size="0.011 0.007 0.0032"/>
-        </geometry>
-        <material name="${link_name}_pad_mat">
-          <color rgba="0.22 0.25 0.29 1.0"/>
-        </material>
-      </visual>
-      <collision>
-        <origin xyz="0 0 0.0034" rpy="0 0 0"/>
-        <geometry>
-          <cylinder radius="0.0058" length="0.0105"/>
-        </geometry>
-      </collision>
-      <inertial>
-        <mass value="0.015"/>
-        <inertia ixx="1.4e-5" ixy="0.0" ixz="0.0" iyy="1.4e-5" iyz="0.0" izz="1.4e-5"/>
-      </inertial>
-    </link>
-  </xacro:macro>
-
   <xacro:macro name="base_body" params="">
     <xacro:property name="robot_cfg" value="${xacro.load_yaml('$(find wall_climber)/config/cable_robot.yaml')}"/>
     <xacro:property name="carriage_cfg" value="${robot_cfg['carriage']}"/>
@@ -210,93 +159,6 @@
       </visual>
 
       <visual>
-        <origin xyz="0 ${-carriage_cfg['height'] * 0.35} ${chin_band_z}" rpy="0 0 0"/>
-        <geometry>
-          <box size="${chin_band_w} ${chin_band_h} ${chin_band_d}"/>
-        </geometry>
-        <material name="robot_chin_band_mat">
-          <color rgba="0.18 0.21 0.25 1.0"/>
-        </material>
-      </visual>
-
-      <visual>
-        <origin xyz="${-(carriage_cfg['width'] * 0.5) + (side_rail_w * 0.5) + 0.008} 0 ${side_rail_z}" rpy="0 0 0"/>
-        <geometry>
-          <box size="${side_rail_w} ${side_rail_h} ${side_rail_d}"/>
-        </geometry>
-        <material name="robot_side_rail_mat">
-          <color rgba="0.22 0.25 0.30 1.0"/>
-        </material>
-      </visual>
-
-      <visual>
-        <origin xyz="${(carriage_cfg['width'] * 0.5) - (side_rail_w * 0.5) - 0.008} 0 ${side_rail_z}" rpy="0 0 0"/>
-        <geometry>
-          <box size="${side_rail_w} ${side_rail_h} ${side_rail_d}"/>
-        </geometry>
-        <material name="robot_side_rail_mat">
-          <color rgba="0.22 0.25 0.30 1.0"/>
-        </material>
-      </visual>
-
-      <visual>
-        <origin xyz="${service_panel_x} ${service_panel_y} ${service_panel_z}" rpy="0 0 0"/>
-        <geometry>
-          <box size="${service_panel_w} ${service_panel_h} ${service_panel_d}"/>
-        </geometry>
-        <material name="robot_service_panel_mat">
-          <color rgba="0.21 0.24 0.28 1.0"/>
-        </material>
-      </visual>
-
-      <visual>
-        <origin xyz="${service_panel_x} ${service_panel_y} ${service_panel_z + 0.0015}" rpy="0 0 0"/>
-        <geometry>
-          <box size="${service_panel_w * 0.72} ${service_panel_h * 0.55} ${service_panel_d * 0.36}"/>
-        </geometry>
-        <material name="robot_service_inset_mat">
-          <color rgba="0.44 0.48 0.54 1.0"/>
-        </material>
-      </visual>
-
-      <visual>
-        <origin xyz="${service_panel_x} ${service_panel_y + service_panel_h * 0.22} ${vent_slit_z}" rpy="0 0 0"/>
-        <geometry>
-          <box size="${vent_slit_w} ${vent_slit_h} ${vent_slit_d}"/>
-        </geometry>
-        <material name="robot_vent_slat_mat">
-          <color rgba="0.09 0.10 0.12 1.0"/>
-        </material>
-      </visual>
-      <visual>
-        <origin xyz="${service_panel_x} ${service_panel_y + service_panel_h * 0.10} ${vent_slit_z}" rpy="0 0 0"/>
-        <geometry>
-          <box size="${vent_slit_w} ${vent_slit_h} ${vent_slit_d}"/>
-        </geometry>
-        <material name="robot_vent_slat_mat">
-          <color rgba="0.09 0.10 0.12 1.0"/>
-        </material>
-      </visual>
-      <visual>
-        <origin xyz="${service_panel_x} ${service_panel_y - service_panel_h * 0.02} ${vent_slit_z}" rpy="0 0 0"/>
-        <geometry>
-          <box size="${vent_slit_w} ${vent_slit_h} ${vent_slit_d}"/>
-        </geometry>
-        <material name="robot_vent_slat_mat">
-          <color rgba="0.09 0.10 0.12 1.0"/>
-        </material>
-      </visual>
-      <visual>
-        <origin xyz="${service_panel_x} ${service_panel_y - service_panel_h * 0.14} ${vent_slit_z}" rpy="0 0 0"/>
-        <geometry>
-          <box size="${vent_slit_w} ${vent_slit_h} ${vent_slit_d}"/>
-        </geometry>
-        <material name="robot_vent_slat_mat">
-          <color rgba="0.09 0.10 0.12 1.0"/>
-        </material>
-      </visual>
-
-      <visual>
         <origin xyz="${arm_exit_slot_x} ${arm_exit_slot_y} ${arm_exit_slot_z}" rpy="0 0 0"/>
         <geometry>
           <box size="${arm_exit_slot_w} ${arm_exit_slot_h} ${arm_exit_slot_d}"/>
@@ -381,6 +243,84 @@
         <material name="robot_corner_bolt_mat"><color rgba="0.64 0.68 0.74 1.0"/></material>
       </visual>
 
+      <!-- Decorative corner brackets clamped over the four VERTICAL edges of
+           the orange shell. Each is an L-shaped cap (two thin plates meeting
+           at the edge) plus an accent stud, so the corner reads as reinforced.
+           Centred in Z so it never reaches the board; cosmetic only. -->
+      <xacro:property name="cc_x" value="${carriage_cfg['width'] / 2.0}"/>
+      <xacro:property name="cc_y" value="${carriage_cfg['height'] / 2.0}"/>
+      <xacro:property name="cc_plate" value="0.022"/>
+      <xacro:property name="cc_t" value="0.006"/>
+      <xacro:property name="cc_z" value="${carriage_cfg['depth'] * 0.46}"/>
+
+      <!-- top-left corner -->
+      <visual>
+        <origin xyz="${-(cc_x + cc_t / 2.0)} ${cc_y - cc_plate / 2.0} 0" rpy="0 0 0"/>
+        <geometry><box size="${cc_t} ${cc_plate} ${cc_z}"/></geometry>
+        <material name="robot_corner_bracket_mat"><color rgba="0.15 0.17 0.20 1.0"/></material>
+      </visual>
+      <visual>
+        <origin xyz="${-(cc_x - cc_plate / 2.0)} ${cc_y + cc_t / 2.0} 0" rpy="0 0 0"/>
+        <geometry><box size="${cc_plate} ${cc_t} ${cc_z}"/></geometry>
+        <material name="robot_corner_bracket_mat"><color rgba="0.15 0.17 0.20 1.0"/></material>
+      </visual>
+      <visual>
+        <origin xyz="${-(cc_x + cc_t)} ${cc_y + cc_t} 0" rpy="0 0 0"/>
+        <geometry><cylinder radius="0.0052" length="${cc_z}"/></geometry>
+        <material name="robot_corner_stud_mat"><color rgba="0.60 0.64 0.70 1.0"/></material>
+      </visual>
+
+      <!-- top-right corner -->
+      <visual>
+        <origin xyz="${cc_x + cc_t / 2.0} ${cc_y - cc_plate / 2.0} 0" rpy="0 0 0"/>
+        <geometry><box size="${cc_t} ${cc_plate} ${cc_z}"/></geometry>
+        <material name="robot_corner_bracket_mat"><color rgba="0.15 0.17 0.20 1.0"/></material>
+      </visual>
+      <visual>
+        <origin xyz="${cc_x - cc_plate / 2.0} ${cc_y + cc_t / 2.0} 0" rpy="0 0 0"/>
+        <geometry><box size="${cc_plate} ${cc_t} ${cc_z}"/></geometry>
+        <material name="robot_corner_bracket_mat"><color rgba="0.15 0.17 0.20 1.0"/></material>
+      </visual>
+      <visual>
+        <origin xyz="${cc_x + cc_t} ${cc_y + cc_t} 0" rpy="0 0 0"/>
+        <geometry><cylinder radius="0.0052" length="${cc_z}"/></geometry>
+        <material name="robot_corner_stud_mat"><color rgba="0.60 0.64 0.70 1.0"/></material>
+      </visual>
+
+      <!-- bottom-left corner -->
+      <visual>
+        <origin xyz="${-(cc_x + cc_t / 2.0)} ${-(cc_y - cc_plate / 2.0)} 0" rpy="0 0 0"/>
+        <geometry><box size="${cc_t} ${cc_plate} ${cc_z}"/></geometry>
+        <material name="robot_corner_bracket_mat"><color rgba="0.15 0.17 0.20 1.0"/></material>
+      </visual>
+      <visual>
+        <origin xyz="${-(cc_x - cc_plate / 2.0)} ${-(cc_y + cc_t / 2.0)} 0" rpy="0 0 0"/>
+        <geometry><box size="${cc_plate} ${cc_t} ${cc_z}"/></geometry>
+        <material name="robot_corner_bracket_mat"><color rgba="0.15 0.17 0.20 1.0"/></material>
+      </visual>
+      <visual>
+        <origin xyz="${-(cc_x + cc_t)} ${-(cc_y + cc_t)} 0" rpy="0 0 0"/>
+        <geometry><cylinder radius="0.0052" length="${cc_z}"/></geometry>
+        <material name="robot_corner_stud_mat"><color rgba="0.60 0.64 0.70 1.0"/></material>
+      </visual>
+
+      <!-- bottom-right corner -->
+      <visual>
+        <origin xyz="${cc_x + cc_t / 2.0} ${-(cc_y - cc_plate / 2.0)} 0" rpy="0 0 0"/>
+        <geometry><box size="${cc_t} ${cc_plate} ${cc_z}"/></geometry>
+        <material name="robot_corner_bracket_mat"><color rgba="0.15 0.17 0.20 1.0"/></material>
+      </visual>
+      <visual>
+        <origin xyz="${cc_x - cc_plate / 2.0} ${-(cc_y + cc_t / 2.0)} 0" rpy="0 0 0"/>
+        <geometry><box size="${cc_plate} ${cc_t} ${cc_z}"/></geometry>
+        <material name="robot_corner_bracket_mat"><color rgba="0.15 0.17 0.20 1.0"/></material>
+      </visual>
+      <visual>
+        <origin xyz="${cc_x + cc_t} ${-(cc_y + cc_t)} 0" rpy="0 0 0"/>
+        <geometry><cylinder radius="0.0052" length="${cc_z}"/></geometry>
+        <material name="robot_corner_stud_mat"><color rgba="0.60 0.64 0.70 1.0"/></material>
+      </visual>
+
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
@@ -395,18 +335,5 @@
       </inertial>
     </link>
 
-    <joint name="left_cable_mount_joint" type="fixed">
-      <parent link="chassis"/>
-      <child link="left_cable_mount"/>
-      <origin xyz="${carriage_cfg['attachment_left_x']} ${attach_left_local_y} ${mount_tip_z}" rpy="0 0 0"/>
-    </joint>
-    <xacro:body_cable_mount link_name="left_cable_mount"/>
-
-    <joint name="right_cable_mount_joint" type="fixed">
-      <parent link="chassis"/>
-      <child link="right_cable_mount"/>
-      <origin xyz="${carriage_cfg['attachment_right_x']} ${attach_right_local_y} ${mount_tip_z}" rpy="0 0 0"/>
-    </joint>
-    <xacro:body_cable_mount link_name="right_cable_mount"/>
   </xacro:macro>
 </robot>

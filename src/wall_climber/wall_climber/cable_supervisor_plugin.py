@@ -232,6 +232,12 @@ class CableSupervisorPlugin:
         self._pen_contact_pub = self._node.create_publisher(Bool, '/wall_climber/pen_contact', 1)
         self._pen_gap_pub = self._node.create_publisher(Float64, '/wall_climber/pen_gap', 1)
         self._status_pub = self._node.create_publisher(String, '/wall_climber/cable_supervisor_status', _TRANSIENT_QOS)
+        # Drives the face screen automatically from real robot state. Published
+        # on change only (like the status lights), so a manual expression set
+        # via the web API survives until the next genuine state transition.
+        self._face_expression_pub = self._node.create_publisher(
+            String, '/wall_climber/face/expression', 1
+        )
         self._node.create_subscription(
             CableSetpoint,
             '/wall_climber/cable_setpoint',
@@ -271,6 +277,18 @@ class CableSupervisorPlugin:
         # of grace avoids flicker between closely-spaced setpoints.
         self._status_idle_grace_steps = 8
         self._status_idle_counter = 0
+
+        # Two-state face driven by real robot motion. The cat plays the Nyan
+        # animation while the carriage is actively moving (executing a draw or
+        # write job) and shows the idle smiling face once it parks. Published on
+        # change only, so a manual override via the web API survives until the
+        # next genuine transition.
+        self._face_expression_state = None
+        # Steps to keep the Nyan animation running after motion stops, so it
+        # does not flicker back to the smile across the tiny pauses between
+        # consecutive strokes. basicTimeStep is ~16ms, so ~90 steps is ~1.5s.
+        self._face_working_linger_steps = 90
+        self._face_working_counter = 0
 
         self._base_board_info = {
             'frame_origin': 'top_left',
@@ -392,10 +410,38 @@ class CableSupervisorPlugin:
         if moved > 1.0e-5:
             self._status_idle_counter = 0
             self._update_status_lights(True)
+            self._update_face_expression(moving=True)
         else:
             self._status_idle_counter += 1
             if self._status_idle_counter >= self._status_idle_grace_steps:
                 self._update_status_lights(False)
+            self._update_face_expression(moving=False)
+
+    def _set_face_expression(self, expression: str):
+        if self._face_expression_state == expression:
+            return
+        self._face_expression_state = expression
+        msg = String()
+        msg.data = expression
+        try:
+            self._face_expression_pub.publish(msg)
+        except Exception:
+            # Republish is attempted on the next genuine transition.
+            self._face_expression_state = None
+
+    def _update_face_expression(self, moving: bool):
+        # Two-state face: 'nyan' while the carriage is moving (running a draw or
+        # write job), 'idle' once it parks. A short linger keeps the animation
+        # running across the tiny pauses between strokes so it does not flicker.
+        if moving:
+            self._face_working_counter = self._face_working_linger_steps
+            self._set_face_expression('nyan')
+        else:
+            if self._face_working_counter > 0:
+                self._face_working_counter -= 1
+                self._set_face_expression('nyan')
+            else:
+                self._set_face_expression('idle')
 
     def _point_map_json(self, points):
         return {

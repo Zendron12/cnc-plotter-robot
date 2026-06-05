@@ -19,7 +19,6 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/computers/protos/Monitor.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/computers/protos/Keyboard.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/chairs/protos/OfficeChair.proto"
-EXTERNPROTO "CornerStepperMotor.proto"
 
 WorldInfo {
   info [
@@ -1109,24 +1108,68 @@ Solid {
 
 # Visual-only stepper/pulley assemblies. The cable supervisor still owns the
 # kinematics; these solids make the board-corner motors visible in Webots.
-CornerStepperMotor {
+Solid {
   translation -3.15 2.392 3.3
   name "top_left_corner_motor"
+  children [
+    Transform { translation 0 0.0225 0 children [
+      Shape { appearance DEF ANCHOR_PLATE_APP PBRAppearance { baseColor 0.10 0.11 0.13 roughness 0.7 metalness 0.25 } geometry Box { size 0.085 0.006 0.085 } } ] }
+    Transform { translation 0 0.004 0 rotation 1 0 0 1.5708 children [
+      Shape { appearance DEF ANCHOR_BODY_APP PBRAppearance { baseColor 0.16 0.17 0.19 roughness 0.4 metalness 0.78 } geometry Cylinder { radius 0.028 height 0.052 subdivision 44 } } ] }
+    Transform { translation 0 0.004 0 rotation 1 0 0 1.5708 children [
+      Shape { appearance DEF ANCHOR_BAND_APP PBRAppearance { baseColor 0.45 0.47 0.50 roughness 0.45 metalness 0.5 } geometry Cylinder { radius 0.033 height 0.018 subdivision 44 } } ] }
+    Transform { translation 0 0.020 -0.040 children [
+      Shape { appearance DEF STATUS_LIGHT_TL PBRAppearance { baseColor 0.90 0.12 0.12 emissiveColor 0.75 0.06 0.06 roughness 0.35 metalness 0.05 } geometry Box { size 0.075 0.005 0.014 } } ] }
+  ]
+  locked TRUE
 }
 
-CornerStepperMotor {
+Solid {
   translation 3.15 2.392 3.3
   name "top_right_corner_motor"
+  children [
+    Transform { translation 0 0.0225 0 children [
+      Shape { appearance USE ANCHOR_PLATE_APP geometry Box { size 0.085 0.006 0.085 } } ] }
+    Transform { translation 0 0.004 0 rotation 1 0 0 1.5708 children [
+      Shape { appearance USE ANCHOR_BODY_APP geometry Cylinder { radius 0.028 height 0.052 subdivision 44 } } ] }
+    Transform { translation 0 0.004 0 rotation 1 0 0 1.5708 children [
+      Shape { appearance USE ANCHOR_BAND_APP geometry Cylinder { radius 0.033 height 0.018 subdivision 44 } } ] }
+    Transform { translation 0 0.020 -0.040 children [
+      Shape { appearance DEF STATUS_LIGHT_TR PBRAppearance { baseColor 0.90 0.12 0.12 emissiveColor 0.75 0.06 0.06 roughness 0.35 metalness 0.05 } geometry Box { size 0.075 0.005 0.014 } } ] }
+  ]
+  locked TRUE
 }
 
-CornerStepperMotor {
+Solid {
   translation -3.15 2.392 0.3
   name "bottom_left_corner_motor"
+  children [
+    Transform { translation 0 0.0225 0 children [
+      Shape { appearance USE ANCHOR_PLATE_APP geometry Box { size 0.085 0.006 0.085 } } ] }
+    Transform { translation 0 0.004 0 rotation 1 0 0 1.5708 children [
+      Shape { appearance USE ANCHOR_BODY_APP geometry Cylinder { radius 0.028 height 0.052 subdivision 44 } } ] }
+    Transform { translation 0 0.004 0 rotation 1 0 0 1.5708 children [
+      Shape { appearance USE ANCHOR_BAND_APP geometry Cylinder { radius 0.033 height 0.018 subdivision 44 } } ] }
+    Transform { translation 0 0.020 -0.040 children [
+      Shape { appearance DEF STATUS_LIGHT_BL PBRAppearance { baseColor 0.90 0.12 0.12 emissiveColor 0.75 0.06 0.06 roughness 0.35 metalness 0.05 } geometry Box { size 0.075 0.005 0.014 } } ] }
+  ]
+  locked TRUE
 }
 
-CornerStepperMotor {
+Solid {
   translation 3.15 2.392 0.3
   name "bottom_right_corner_motor"
+  children [
+    Transform { translation 0 0.0225 0 children [
+      Shape { appearance USE ANCHOR_PLATE_APP geometry Box { size 0.085 0.006 0.085 } } ] }
+    Transform { translation 0 0.004 0 rotation 1 0 0 1.5708 children [
+      Shape { appearance USE ANCHOR_BODY_APP geometry Cylinder { radius 0.028 height 0.052 subdivision 44 } } ] }
+    Transform { translation 0 0.004 0 rotation 1 0 0 1.5708 children [
+      Shape { appearance USE ANCHOR_BAND_APP geometry Cylinder { radius 0.033 height 0.018 subdivision 44 } } ] }
+    Transform { translation 0 0.020 -0.040 children [
+      Shape { appearance DEF STATUS_LIGHT_BR PBRAppearance { baseColor 0.90 0.12 0.12 emissiveColor 0.75 0.06 0.06 roughness 0.35 metalness 0.05 } geometry Box { size 0.075 0.005 0.014 } } ] }
+  ]
+  locked TRUE
 }
 
 Robot {

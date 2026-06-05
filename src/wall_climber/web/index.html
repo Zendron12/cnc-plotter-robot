@@ -1359,6 +1359,19 @@
                       <option value="smooth_curves" selected>Normal</option>
                       <option value="polyline">Off</option>
                     </select>
+                    <div class="field-hint">
+                      Normal&nbsp;= smooth flowing curves. Off&nbsp;= straight polyline segments (more angular).
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label for="sketch-thin-line">
+                      Thin Line Filter
+                      <span id="sketch-thin-line-readout" class="field-hint">Off (keep all lines)</span>
+                    </label>
+                    <input id="sketch-thin-line" type="range" min="0" max="6" step="0.5" value="0">
+                    <div class="field-hint">
+                      Removes lines thinner than the robot's pen so faint hairline detail isn't drawn wobbly. Higher&nbsp;= removes more thin lines.
+                    </div>
                   </div>
                   <div class="field checkbox-field">
                     <label for="sketch-preserve-tiny">
@@ -1695,6 +1708,8 @@
         sketchTinyCandidateMm: document.getElementById('sketch-tiny-candidate-mm'),
         sketchResolution: document.getElementById('sketch-resolution'),
         sketchResolutionReadout: document.getElementById('sketch-resolution-readout'),
+        sketchThinLine: document.getElementById('sketch-thin-line'),
+        sketchThinLineReadout: document.getElementById('sketch-thin-line-readout'),
         sketchCurveTolerance: document.getElementById('sketch-curve-tolerance'),
         sketchMargin: document.getElementById('sketch-margin'),
         sketchMinComponent: document.getElementById('sketch-min-component'),
@@ -4119,24 +4134,40 @@
         dom.sketchResolutionReadout.title = step.hint;
       }
 
+      function syncSketchThinLineReadout() {
+        if (!dom.sketchThinLine || !dom.sketchThinLineReadout) {
+          return;
+        }
+        const value = Math.max(0, Number(dom.sketchThinLine.value || 0));
+        if (value <= 0) {
+          dom.sketchThinLineReadout.textContent = 'Off (keep all lines)';
+        } else {
+          dom.sketchThinLineReadout.textContent = `Remove < ${value.toFixed(1)} mm`;
+        }
+      }
+
       function readFilePreviewSettings() {
         const useAdvanced = DEBUG_MODE || String(dom.sketchOptimizationPreset.value || 'detail') === 'custom';
+        // Only the user-facing controls are sent in normal mode. Every hidden
+        // advanced setting is omitted so the backend applies its documented
+        // default, keeping normal requests default-equivalent (design Property 6).
         const settings = {
           optimization_preset: String(dom.sketchOptimizationPreset.value || 'detail'),
           sketch_extraction_method: String(dom.sketchExtractionMethod.value || 'adaptive'),
           preview_geometry_mode: String(dom.sketchPreviewGeometry.value || 'smooth_curves'),
           fit_to_safe_area: Boolean(dom.sketchFitSafe.checked),
           optimize_stroke_order: Boolean(dom.sketchOptimizeDraw.checked),
-          path_optimizer: String(dom.pathOptimizer ? dom.pathOptimizer.value : 'internal'),
           max_image_dim: resolveSketchMaxImageDim(),
-          margin_m: Number(dom.sketchMargin.value || 0.05),
-          line_sensitivity: Math.max(0, Math.min(0.95, Number(dom.sketchLineSensitivity.value || 0.35))),
-          scale_percent: Math.max(1, Number(dom.sketchScalePercent.value || 100)),
           preserve_tiny_details: Boolean(dom.sketchPreserveTiny && dom.sketchPreserveTiny.checked),
           minimum_drawable_feature_m: Math.max(0.0005, Number(dom.sketchTinySizeMm.value || 4.5) / 1000),
           tiny_detail_expand_mode: 'micro_cross',
+          thin_line_min_width_mm: dom.sketchThinLine ? Math.max(0, Number(dom.sketchThinLine.value || 0)) : 0,
         };
         if (useAdvanced) {
+          settings.path_optimizer = String(dom.pathOptimizer ? dom.pathOptimizer.value : 'internal');
+          settings.margin_m = Number(dom.sketchMargin.value || 0.05);
+          settings.line_sensitivity = Math.max(0, Math.min(0.95, Number(dom.sketchLineSensitivity.value || 0.35)));
+          settings.scale_percent = Math.max(1, Number(dom.sketchScalePercent.value || 100));
           settings.curve_tolerance_px = Math.max(0.05, Number(dom.sketchCurveTolerance.value || 1.0));
           settings.min_component_area_px = Math.max(1, Math.round(Number(dom.sketchMinComponent.value || 2)));
           settings.min_stroke_length_px = Math.max(0, Number(dom.sketchMinStroke.value || 1));
@@ -4146,12 +4177,12 @@
           settings.merge_gap_px = Math.max(0, Number(dom.sketchMergeGap.value || 0));
           settings.simplify_epsilon_px = Math.max(0, Number(dom.sketchSimplifyEpsilon.value || 0.25));
           settings.tiny_detail_candidate_max_feature_m = Math.max(0.0001, Number(dom.sketchTinyCandidateMm.value || 3.4) / 1000);
-        }
-        if (dom.sketchCenterX.value.trim() !== '') {
-          settings.center_x_m = Number(dom.sketchCenterX.value);
-        }
-        if (dom.sketchCenterY.value.trim() !== '') {
-          settings.center_y_m = Number(dom.sketchCenterY.value);
+          if (dom.sketchCenterX.value.trim() !== '') {
+            settings.center_x_m = Number(dom.sketchCenterX.value);
+          }
+          if (dom.sketchCenterY.value.trim() !== '') {
+            settings.center_y_m = Number(dom.sketchCenterY.value);
+          }
         }
         return settings;
       }
@@ -4298,6 +4329,7 @@
         dom.sketchTinySizeMm,
         dom.sketchTinyCandidateMm,
         dom.sketchResolution,
+        dom.sketchThinLine,
         dom.sketchCurveTolerance,
         dom.sketchMargin,
         dom.sketchMinComponent,

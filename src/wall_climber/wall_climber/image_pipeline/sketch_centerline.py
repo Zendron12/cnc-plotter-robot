@@ -9,6 +9,11 @@ import cv2  # type: ignore
 import numpy
 
 from wall_climber.image_pipeline._preprocess import enhance_for_extraction
+from wall_climber.image_pipeline._thin_line_filter import filter_thin_lines
+from wall_climber.image_pipeline._face_regions import (
+    apply_face_preserving_threshold,
+    detect_face_regions,
+)
 from wall_climber.image_pipeline._stroke_order import (
     Stroke as _OrderingStroke,
     optimise_stroke_order,
@@ -1068,6 +1073,107 @@ def _metrics(
     )
 
 
+def _estimate_scale_m_per_px(
+    mask: numpy.ndarray,
+    *,
+    margin_m: float,
+    scale_percent: float,
+    fit_bounds_m: BoundsM | None,
+    board_width_m: float,
+    board_height_m: float,
+) -> float | None:
+    """Estimate metres-per-pixel for the cleaned mask BEFORE tracing.
+
+    Mirrors the fit formula in ``_scale_strokes_to_board``: the content is
+    isotropically scaled to fit the available area (fit bounds minus margins).
+    Returns ``None`` if the mask is empty or the fit area is degenerate.
+    """
+    ys, xs = numpy.nonzero(mask)
+    if xs.size == 0 or ys.size == 0:
+        return None
+    source_width = float(xs.max() - xs.min())
+    source_height = float(ys.max() - ys.min())
+    if source_width <= _EPS and source_height <= _EPS:
+        return None
+
+    board_bounds = {
+        'x_min': 0.0,
+        'x_max': float(board_width_m),
+        'y_min': 0.0,
+        'y_max': float(board_height_m),
+    }
+    fit_bounds = _normalize_bounds_m(fit_bounds_m, default=board_bounds, field_name='fit_bounds_m')
+    available_width = (fit_bounds['x_max'] - fit_bounds['x_min']) - (2.0 * float(margin_m))
+    available_height = (fit_bounds['y_max'] - fit_bounds['y_min']) - (2.0 * float(margin_m))
+    if available_width <= 0.0 or available_height <= 0.0:
+        return None
+
+    scale_candidates = []
+    if source_width > _EPS:
+        scale_candidates.append(available_width / source_width)
+    if source_height > _EPS:
+        scale_candidates.append(available_height / source_height)
+    if not scale_candidates:
+        return None
+    base_scale = min(scale_candidates)
+    return base_scale * (float(scale_percent) / 100.0)
+
+
+def _apply_thin_line_filter(
+    cleaned_binary: numpy.ndarray,
+    *,
+    thin_line_min_width_mm: float,
+    margin_m: float,
+    scale_percent: float,
+    fit_bounds_m: BoundsM | None,
+    board_width_m: float,
+    board_height_m: float,
+) -> dict[str, object]:
+    """Run the thin-line filter on the cleaned mask, converting the mm threshold
+    to pixels via an early scale estimate. Returns metadata plus the filtered
+    mask under the private key ``_filtered_mask``.
+    """
+    metadata: dict[str, object] = {
+        'thin_line_filter_enabled': bool(thin_line_min_width_mm > 0.0),
+        'thin_line_min_width_mm': float(max(0.0, thin_line_min_width_mm)),
+        'thin_line_min_width_px': 0.0,
+        'thin_line_scale_m_per_px': None,
+        'thin_line_components_total': None,
+        'thin_line_components_kept': None,
+        'thin_line_components_removed': None,
+    }
+    if thin_line_min_width_mm <= 0.0:
+        metadata['_filtered_mask'] = cleaned_binary
+        return metadata
+
+    scale_m_per_px = _estimate_scale_m_per_px(
+        cleaned_binary,
+        margin_m=margin_m,
+        scale_percent=scale_percent,
+        fit_bounds_m=fit_bounds_m,
+        board_width_m=board_width_m,
+        board_height_m=board_height_m,
+    )
+    if scale_m_per_px is None or scale_m_per_px <= 0.0:
+        # Cannot map mm to px reliably; skip filtering rather than guess.
+        metadata['_filtered_mask'] = cleaned_binary
+        return metadata
+
+    min_width_px = (float(thin_line_min_width_mm) / 1000.0) / float(scale_m_per_px)
+    filtered, filter_meta = filter_thin_lines(cleaned_binary, min_stroke_width_px=min_width_px)
+    metadata.update(
+        {
+            'thin_line_min_width_px': float(filter_meta['thin_line_min_width_px']),
+            'thin_line_scale_m_per_px': float(scale_m_per_px),
+            'thin_line_components_total': int(filter_meta['components_total']),
+            'thin_line_components_kept': int(filter_meta['components_kept']),
+            'thin_line_components_removed': int(filter_meta['components_removed']),
+            '_filtered_mask': filtered,
+        }
+    )
+    return metadata
+
+
 def vectorize_sketch_image_to_plan(
     image_bytes_or_path: bytes | bytearray | str | Path,
     *,
@@ -1092,6 +1198,8 @@ def vectorize_sketch_image_to_plan(
     enable_preprocessing: bool | None = None,
     enable_stroke_reorder: bool | None = None,
     enable_skeleton_smoothing: bool | None = None,
+    thin_line_min_width_mm: float = 0.0,
+    enable_face_handling: bool = True,
 ) -> DrawingPathPlan:
     """Convert a high-contrast sketch image into a board-space DrawingPathPlan."""
 
@@ -1173,11 +1281,46 @@ def vectorize_sketch_image_to_plan(
     mark(stage_started, 'threshold_time_ms')
 
     stage_started = time.perf_counter()
+    face_boxes: list = []
+    if enable_face_handling:
+        face_boxes = detect_face_regions(processed_gray)
+        if face_boxes:
+            binary = apply_face_preserving_threshold(
+                binary,
+                processed_gray,
+                face_boxes,
+                line_sensitivity=float(line_sensitivity),
+            )
+    face_metadata = {
+        'face_handling_enabled': bool(enable_face_handling),
+        'face_regions_detected': int(len(face_boxes)),
+    }
+    mark(stage_started, 'face_handling_time_ms')
+
+    stage_started = time.perf_counter()
     cleaned_binary, component_metadata = _remove_small_components(
         binary,
         min_component_area_px=min_component_area_px,
     )
     mark(stage_started, 'cleanup_time_ms')
+
+    stage_started = time.perf_counter()
+    thin_line_metadata = _apply_thin_line_filter(
+        cleaned_binary,
+        thin_line_min_width_mm=float(thin_line_min_width_mm),
+        margin_m=float(margin_m),
+        scale_percent=float(scale_percent),
+        fit_bounds_m=fit_bounds_m,
+        board_width_m=float(board_width_m),
+        board_height_m=float(board_height_m),
+    )
+    cleaned_binary = thin_line_metadata.pop('_filtered_mask')
+    mark(stage_started, 'thin_line_filter_time_ms')
+    if not numpy.any(cleaned_binary):
+        raise ValueError(
+            'The thin-line filter removed every stroke; lower the thin-line '
+            'filter value so some strokes remain.'
+        )
 
     stage_started = time.perf_counter()
     skeleton, skeleton_backend = _skeletonize_foreground(cleaned_binary)
@@ -1349,7 +1492,9 @@ def vectorize_sketch_image_to_plan(
         'timing': {key: float(value) for key, value in timing.items()},
         'warnings': tuple(warnings),
         **threshold_metadata,
+        **face_metadata,
         **component_metadata,
+        **thin_line_metadata,
         **skeleton_prune_metadata,
         **smoothing_metadata,
         **stroke_reorder_metadata,

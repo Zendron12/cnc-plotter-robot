@@ -35,6 +35,7 @@ setup(
         # Recursive directory inclusions (Fonts and Web UI)
         *package_files('fonts', os.path.join('share', package_name, 'fonts')),
         *package_files('web', os.path.join('share', package_name, 'web')),
+        *package_files('assets', os.path.join('share', package_name, 'assets')),
     ],
     install_requires=[
         'setuptools',
@@ -44,6 +45,12 @@ setup(
         'python-multipart',
         'matplotlib',
         'scikit-image',
+        # Optional at runtime: self-hosted English speech-to-text for the voice
+        # control feature. If it (or its model weights) is unavailable, the
+        # /api/voice/transcribe endpoint returns 503 and the web UI falls back to
+        # the browser Web Speech API. Model weights download once on first use
+        # and are cached under the user's home directory.
+        'faster-whisper',
     ],
     extras_require={
         'test': [

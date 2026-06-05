@@ -627,3 +627,53 @@ def test_missing_skeletonization_backend_raises_runtime_error(monkeypatch) -> No
             board_width_m=2.0,
             board_height_m=1.0,
         )
+
+
+def _plan_stroke_points(plan: DrawingPathPlan) -> list[tuple]:
+    return [
+        tuple((round(p.x, 9), round(p.y, 9)) for p in stroke.points)
+        for stroke in plan.strokes
+    ]
+
+
+def test_thin_line_filter_default_is_noop() -> None:
+    """thin_line_min_width_mm=0.0 (default) must not change the produced plan
+    versus the existing path."""
+    image = _line_image()
+    baseline = vectorize_sketch_image_to_plan(
+        image, board_width_m=2.0, board_height_m=1.5,
+    )
+    with_default = vectorize_sketch_image_to_plan(
+        image, board_width_m=2.0, board_height_m=1.5,
+        thin_line_min_width_mm=0.0,
+    )
+    assert _plan_stroke_points(baseline) == _plan_stroke_points(with_default)
+    assert with_default.metadata['thin_line_filter_enabled'] is False
+
+
+def test_thin_line_filter_metadata_present_when_enabled() -> None:
+    """A positive thin-line value records filter metadata on the plan."""
+    plan = vectorize_sketch_image_to_plan(
+        _line_image(), board_width_m=2.0, board_height_m=1.5,
+        thin_line_min_width_mm=0.5,
+    )
+    assert plan.metadata['thin_line_filter_enabled'] is True
+    assert plan.metadata['thin_line_min_width_mm'] == 0.5
+    assert plan.metadata['thin_line_components_total'] is not None
+
+
+def test_face_handling_noop_without_face() -> None:
+    """On an image with no face, enable_face_handling=True produces the same
+    plan as enable_face_handling=False (non-face regions are untouched)."""
+    image = _rectangle_image()
+    with_face = vectorize_sketch_image_to_plan(
+        image, board_width_m=2.0, board_height_m=1.5,
+        enable_face_handling=True,
+    )
+    without_face = vectorize_sketch_image_to_plan(
+        image, board_width_m=2.0, board_height_m=1.5,
+        enable_face_handling=False,
+    )
+    assert _plan_stroke_points(with_face) == _plan_stroke_points(without_face)
+    assert with_face.metadata['face_regions_detected'] == 0
+    assert with_face.metadata['face_handling_enabled'] is True
