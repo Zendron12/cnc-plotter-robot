@@ -5,7 +5,7 @@ robot that draws on a large whiteboard. The system uses a four-cable kinematic
 supervisor, a Python backend with a browser UI, and a C++ executor to publish
 cable setpoints.
 
-This README documents the `sketch-centerline-updates` branch.
+This README documents the `sketch-centerline-release` branch.
 
 ## Highlights
 
