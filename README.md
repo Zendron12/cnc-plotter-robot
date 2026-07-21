@@ -12,8 +12,8 @@
   <a href="#features">Features</a> •
   <a href="#gallery">Gallery</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#architecture">Architecture</a> •
-  <a href="#license">License</a>
+  <a href="#ai-models--dependencies">AI & Dependencies</a> •
+  <a href="#architecture">Architecture</a>
 </p>
 
 ---
@@ -23,7 +23,7 @@
 - **Cable-Driven Kinematics** — Four-cable system with real-time workspace safety checks.
 - **Image-to-Drawing Pipeline** — Upload a photo or sketch → AI preprocessing → vectorization → robot draws it.
 - **Text Writing** — Type or dictate text; the robot writes it in single-line fonts with column layout support.
-- **Voice Dictation** — Whisper-based speech-to-text, speaks and the robot writes.
+- **Voice Dictation** — Whisper-based speech-to-text; speak and the robot writes.
 - **Live Web UI** — Browser-based control panel with real-time board preview, crop, erase, and draw tools.
 - **Multiple Vectorizers** — AutoTrace (centerline) and Potrace (outline), selectable per job.
 - **AI Line Art** — SwinIR upscaling + cloud/local line-art extraction for photos.
@@ -33,7 +33,7 @@
 
 <p align="center">
   <img src="docs/images/webots-simulation.png" alt="Webots 3D Simulation" width="700"><br>
-  <em>Webots simulation — the robot draws Nyan Cat on the whiteboard</em>
+  <em>Webots 3D simulation — cable robot operating on the whiteboard with Nyan Cat animated on its OLED face screen</em>
 </p>
 
 <p align="center">
@@ -84,7 +84,29 @@ Open **http://localhost:8080** in your browser.
 | `world` | `wall_world_basic.wbt` | Webots world file |
 | `whisper_device` | `auto` | Whisper device: `auto`, `cuda`, `cpu` |
 
+## AI Models & Dependencies
+
+The project integrates several open-source AI and vectorization models. Installation & setup details:
+
+- **Voice Dictation (Whisper & Silero VAD)**:
+  Uses `faster-whisper` and `silero-vad`. Model weights (`base.en` by default) automatically download on first run.
+  ```bash
+  pip install faster-whisper silero-vad torch
+  ```
+- **AI Image Enhancements (SwinIR & Line Art)**:
+  Super-resolution upscaling and line-art extraction powered by PyTorch models (`SwinIR` / `Informative-Drawings`). Models are loaded dynamically via PyTorch/OpenCV.
+- **Centerline Vectorization (AutoTrace)**:
+  Optional backend for single-stroke centerline tracing. Install via included script:
+  ```bash
+  scripts/install_autotrace.sh
+  ```
+
 ## Architecture
+
+<p align="center">
+  <img src="docs/images/architecture_graph.png" alt="ROS 2 Computational Graph Architecture" width="750"><br>
+  <em>ROS 2 Computation Graph — nodes, supervisors, topics, and web UI communication</em>
+</p>
 
 ```
 src/
@@ -98,14 +120,10 @@ src/
 └── wall_climber_draw_body/    # C++ cable draw executor
 ```
 
-**Pipeline**: Upload → AI Preprocess → Vectorize → Optimize stroke order → ROS transport → Cable executor → Drawing
+**Pipeline**: Upload/Dictate → AI Preprocess → Vectorize → Optimize stroke order → ROS transport → Cable executor → Drawing
 
 ## Tests
 
 ```bash
 PYTHONPATH=src/wall_climber python3 -m pytest -q src/wall_climber/test -p no:anyio
 ```
-
-## License
-
-MIT — see [LICENSE](LICENSE).
