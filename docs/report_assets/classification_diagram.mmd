@@ -1,0 +1,27 @@
+%%{init: {'theme': 'base', 'themeVariables': {
+  'fontSize': '16px',
+  'fontFamily': 'Arial, sans-serif',
+  'primaryTextColor': '#111827',
+  'primaryColor': '#ffffff',
+  'primaryBorderColor': '#111827',
+  'lineColor': '#111827',
+  'secondaryColor': '#ffffff',
+  'tertiaryColor': '#ffffff'
+}}}%%
+flowchart TB
+    root["Automated Drawing Robots"]
+    rigid["Rigid Frame<br/>Cartesian / CNC"]
+    cdpr["Cable-Driven CDPR"]
+    axi["AxiDraw / Gantry<br/>High precision, limited scale"]
+    vplot["2-Cable V-Plotter<br/>Makelangelo — sway risk"]
+    four["4-Cable CDPR<br/>Skycam-class stability"]
+    artie["Artie<br/>(this project)"]
+    stack["Artie software stack<br/>• ROS 2 + FastDDS<br/>• FastAPI Web Console<br/>• SwinIR / AniLines / Informative<br/>• AutoTrace / Potrace<br/>• NN + 2-opt stroke reorder"]
+
+    root --> rigid
+    root --> cdpr
+    rigid --> axi
+    rigid --> vplot
+    cdpr --> four
+    cdpr --> artie
+    artie --> stack

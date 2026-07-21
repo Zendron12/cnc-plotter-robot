@@ -1,0 +1,26 @@
+digraph pipeline_flow {
+    graph [rankdir=TB, bgcolor=white, splines=ortho, nodesep=0.6, ranksep=0.7, fontname="Arial"];
+    node [shape=box, style="rounded", fontname="Arial", fontsize=14, margin="0.25,0.15"];
+    edge [fontname="Arial", fontsize=12, arrowsize=0.8];
+
+    start [label="Start", shape=circle, width=0.5, fixedsize=true];
+    upload [label="User upload\n(image / SVG / text)"];
+    mode [label="Preprocess mode?", shape=diamond, width=2.2, height=1.2, fixedsize=true];
+    photo [label="Photo path:\nSwinIR → Informative or AniLines"];
+    coloring [label="Coloring Book:\nSwinIR (optional) or Raw Print"];
+    vector [label="Vectorize\nAutoTrace or Potrace"];
+    canonical [label="Canonical Path +\ncurve fit preview"];
+    tsp [label="Stroke reorder\n(NN + 2-opt, time budget)"];
+    executor [label="C++ Executor\nInverse kinematics @ 50 Hz"];
+    ros [label="ROS 2 / DDS\nmotor commands"];
+    draw [label="Draw on whiteboard"];
+    home [label="Return home"];
+    finish [label="End", shape=circle, width=0.5, fixedsize=true];
+
+    start -> upload -> mode;
+    mode -> photo [label=" Photo "];
+    mode -> coloring [label=" Coloring Book "];
+    photo -> vector;
+    coloring -> vector;
+    vector -> canonical -> tsp -> executor -> ros -> draw -> home -> finish;
+}

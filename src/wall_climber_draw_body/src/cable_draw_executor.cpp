@@ -132,7 +132,7 @@ class CableDrawExecutor final : public rclcpp::Node {
     declare_parameter("body_safe_safe_y_max", 2.82);
     declare_parameter("completion_park_x", 0.348);
     declare_parameter("completion_park_y", 1.5);
-    declare_parameter("corner_keepout_radius", 0.36);
+    declare_parameter("corner_keepout_radius", 0.24);
     declare_parameter("pen_down_settle_sec", 0.05);
 
     setpoint_pub_ = create_publisher<wall_climber_interfaces::msg::CableSetpoint>(
@@ -152,6 +152,10 @@ class CableDrawExecutor final : public rclcpp::Node {
       "/wall_climber/primitive_path_plan",
       10,
       std::bind(&CableDrawExecutor::primitive_path_plan_callback, this, std::placeholders::_1));
+    cancel_sub_ = create_subscription<std_msgs::msg::String>(
+      "/wall_climber/execution_cancel",
+      transient_local_qos(),
+      std::bind(&CableDrawExecutor::cancel_execution_callback, this, std::placeholders::_1));
 
     timer_ = create_wall_timer(
       std::chrono::duration<double>(read_publish_period_sec()),
@@ -291,8 +295,11 @@ class CableDrawExecutor final : public rclcpp::Node {
            point_within_safe_workspace(point, params);
   }
 
-  geometry::SamplePolicy execution_sampling_policy(const GeometryParams & params) const {
-    const bool text_mode = active_mode_ == "text";
+  geometry::SamplePolicy execution_sampling_policy_for_mode(
+    const std::string & mode,
+    const GeometryParams & params) const
+  {
+    const bool text_mode = mode == "text";
     const double draw_step = text_mode ? params.text_draw_resample_step_m : params.draw_resample_step_m;
     const double travel_step = text_mode ? params.text_travel_resample_step_m : params.travel_resample_step_m;
 
@@ -303,6 +310,10 @@ class CableDrawExecutor final : public rclcpp::Node {
     policy.travel_step_m = travel_step;
     policy.max_heading_delta_rad = 0.16;
     return policy;
+  }
+
+  geometry::SamplePolicy execution_sampling_policy(const GeometryParams & params) const {
+    return execution_sampling_policy_for_mode(active_mode_, params);
   }
 
   double hygiene_segment_length_m(const GeometryParams & params) const {
@@ -357,9 +368,11 @@ class CableDrawExecutor final : public rclcpp::Node {
     const GeometryParams & params,
     const int32_t segment_index,
     const geometry::SamplePolicy & policy,
-    std::vector<ScheduledPath> * paths) const
+    std::vector<ScheduledPath> * paths,
+    const std::string & mode_for_park = "") const
   {
-    if (active_mode_ != "text" && active_mode_ != "draw") {
+    const std::string & mode = mode_for_park.empty() ? active_mode_ : mode_for_park;
+    if (mode != "text" && mode != "draw") {
       return;
     }
 
@@ -495,6 +508,43 @@ class CableDrawExecutor final : public rclcpp::Node {
     pending_last_pen_down_ = pen_down;
     pending_last_segment_index_ = segment_index;
     has_pending_last_state_ = true;
+    return true;
+  }
+
+  bool publish_immediate_pen_up(const GeometryParams & params, std::string * failure) {
+    if (!finite_point(current_pen_point_)) {
+      return true;
+    }
+    if (!point_valid_for_pen_motion(current_pen_point_, params)) {
+      *failure = "current pen position is outside the executable workspace";
+      return false;
+    }
+    wall_climber_interfaces::msg::CableSetpoint setpoint = make_setpoint(
+      current_pen_point_,
+      false,
+      -1,
+      0.0,
+      params);
+    if (!std::isfinite(setpoint.cable_lengths[0]) ||
+        !std::isfinite(setpoint.cable_lengths[1])) {
+      *failure = "failed to compute finite cable lengths";
+      return false;
+    }
+    setpoint_pub_->publish(setpoint);
+    return true;
+  }
+
+  bool publish_front_schedule_sample() {
+    if (schedule_.empty()) {
+      return false;
+    }
+    const auto next = schedule_.front().setpoint;
+    current_pen_point_ = Point2D{
+      next.carriage_pose.x + get_parameter("pen_offset_x").as_double(),
+      next.carriage_pose.y + get_parameter("pen_offset_y").as_double(),
+    };
+    setpoint_pub_->publish(next);
+    schedule_.pop_front();
     return true;
   }
 
@@ -688,6 +738,75 @@ class CableDrawExecutor final : public rclcpp::Node {
     active_mode_ = msg->data;
   }
 
+  void cancel_execution_callback(const std_msgs::msg::String::SharedPtr msg) {
+    if (!msg) {
+      return;
+    }
+    const std::string command = msg->data;
+    if (command != "stop" && command != "cancel") {
+      return;
+    }
+    if (status_ == "idle" && schedule_.empty() && pending_paths_.empty()) {
+      return;
+    }
+
+    RCLCPP_WARN(get_logger(), "Emergency cancel received; aborting plan and parking carriage.");
+    const std::string saved_mode = active_mode_;
+    reset_pending_execution_state();
+
+    const GeometryParams params = read_geometry_params();
+    const Point2D park_point = params.completion_park;
+    if (!point_valid_for_pen_motion(park_point, params) ||
+        executor_approximately_equal(current_pen_point_, park_point)) {
+      set_status("done");
+      return;
+    }
+
+    std::string failure;
+    if (!publish_immediate_pen_up(params, &failure)) {
+      RCLCPP_ERROR(get_logger(), "Emergency cancel pen-up failed: %s", failure.c_str());
+      set_status("done");
+      return;
+    }
+
+    // MODE_OFF may arrive on active_mode before this callback runs; always park.
+    std::string park_mode = saved_mode;
+    if (park_mode != "text" && park_mode != "draw") {
+      park_mode = "draw";
+    }
+
+    const geometry::SamplePolicy policy = execution_sampling_policy_for_mode(park_mode, params);
+    std::vector<ScheduledPath> park_paths;
+    append_optional_completion_park(
+      current_pen_point_,
+      params,
+      -1,
+      policy,
+      &park_paths,
+      park_mode);
+    if (park_paths.empty()) {
+      set_status("done");
+      return;
+    }
+
+    double total_length = 0.0;
+    for (const auto & path : park_paths) {
+      if (path.points.size() >= 2U) {
+        total_length += polyline_length(path.points);
+      }
+    }
+    pending_total_length_m_ = total_length <= 1.0e-9 ? 1.0 : total_length;
+    pending_traversed_length_m_ = 0.0;
+    has_pending_last_state_ = false;
+    pending_paths_ = std::deque<ScheduledPath>(park_paths.begin(), park_paths.end());
+
+    if (!build_next_schedule_chunk(params, &failure)) {
+      set_status("done");
+      return;
+    }
+    set_status("running");
+  }
+
   void primitive_path_plan_callback(
     const wall_climber_interfaces::msg::PrimitivePathPlan::SharedPtr msg)
   {
@@ -801,6 +920,7 @@ class CableDrawExecutor final : public rclcpp::Node {
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr diagnostics_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr active_mode_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr cancel_sub_;
   rclcpp::Subscription<wall_climber_interfaces::msg::PrimitivePathPlan>::SharedPtr primitive_plan_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
   std::deque<PlannedSample> schedule_;

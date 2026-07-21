@@ -1,0 +1,1 @@
+from wall_climber.http.routes.preview_draw import register_preview_routes as register_routes

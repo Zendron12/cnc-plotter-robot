@@ -13,59 +13,102 @@ outside detected face boxes are never modified.
 
 from __future__ import annotations
 
+import math
+
 import cv2  # type: ignore
 import numpy
 
 _FaceBox = tuple[int, int, int, int]
 
-# Cached cascade classifier (loaded once). ``False`` means "tried and failed".
+# Cached cascade classifiers (loaded once). ``False`` means "tried and failed".
 _FACE_CASCADE = None
+_PROFILE_CASCADE = None
+
+
+def _load_haar_cascade(filename: str):
+    try:
+        data = getattr(cv2, 'data', None)
+        if data is None or not getattr(data, 'haarcascades', None):
+            return None
+        path = data.haarcascades + filename
+        cascade = cv2.CascadeClassifier(path)
+        if cascade.empty():
+            return None
+        return cascade
+    except Exception:
+        return None
 
 
 def _load_face_cascade():
     global _FACE_CASCADE
     if _FACE_CASCADE is not None:
         return _FACE_CASCADE or None
-    try:
-        data = getattr(cv2, 'data', None)
-        if data is None or not getattr(data, 'haarcascades', None):
-            _FACE_CASCADE = False
-            return None
-        path = data.haarcascades + 'haarcascade_frontalface_default.xml'
-        cascade = cv2.CascadeClassifier(path)
-        if cascade.empty():
-            _FACE_CASCADE = False
-            return None
-        _FACE_CASCADE = cascade
-        return cascade
-    except Exception:
-        _FACE_CASCADE = False
-        return None
+    cascade = _load_haar_cascade('haarcascade_frontalface_default.xml')
+    _FACE_CASCADE = cascade if cascade is not None else False
+    return cascade
+
+
+def _load_profile_cascade():
+    global _PROFILE_CASCADE
+    if _PROFILE_CASCADE is not None:
+        return _PROFILE_CASCADE or None
+    cascade = _load_haar_cascade('haarcascade_profileface.xml')
+    _PROFILE_CASCADE = cascade if cascade is not None else False
+    return cascade
 
 
 def detect_face_regions(gray: numpy.ndarray) -> list[_FaceBox]:
-    """Detect frontal-face bounding boxes ``(x, y, w, h)``.
+    """Detect frontal/profile face bounding boxes ``(x, y, w, h)``.
 
     Returns an empty list when no face is found or the cascade is unavailable
     (never raises).
     """
-    cascade = _load_face_cascade()
-    if cascade is None:
-        return []
     if gray.dtype != numpy.uint8:
         gray = numpy.clip(gray, 0, 255).astype(numpy.uint8)
     short_side = max(1, min(gray.shape[:2]))
-    min_size = max(24, short_side // 8)
-    try:
-        faces = cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(min_size, min_size),
-        )
-    except Exception:
+    min_size = max(16, short_side // 12)
+    detect_kwargs = {
+        'scaleFactor': 1.08,
+        'minNeighbors': 4,
+        'minSize': (min_size, min_size),
+    }
+    faces: list[_FaceBox] = []
+    for cascade_loader in (_load_face_cascade, _load_profile_cascade):
+        cascade = cascade_loader()
+        if cascade is None:
+            continue
+        try:
+            detected = cascade.detectMultiScale(gray, **detect_kwargs)
+        except Exception:
+            continue
+        faces.extend((int(x), int(y), int(w), int(h)) for (x, y, w, h) in detected)
+    if not faces:
         return []
-    return [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in faces]
+    # Drop heavily overlapping boxes; keep the larger candidate.
+    faces.sort(key=lambda box: box[2] * box[3], reverse=True)
+    kept: list[_FaceBox] = []
+    for candidate in faces:
+        cx = candidate[0] + (candidate[2] * 0.5)
+        cy = candidate[1] + (candidate[3] * 0.5)
+        duplicate = False
+        for existing in kept:
+            ex = existing[0] + (existing[2] * 0.5)
+            ey = existing[1] + (existing[3] * 0.5)
+            overlap_x = min(candidate[0] + candidate[2], existing[0] + existing[2]) - max(candidate[0], existing[0])
+            overlap_y = min(candidate[1] + candidate[3], existing[1] + existing[3]) - max(candidate[1], existing[1])
+            if overlap_x <= 0 or overlap_y <= 0:
+                continue
+            overlap_area = overlap_x * overlap_y
+            min_area = min(candidate[2] * candidate[3], existing[2] * existing[3])
+            if overlap_area >= (0.45 * min_area):
+                duplicate = True
+                break
+            if math.hypot(cx - ex, cy - ey) <= min(candidate[2], candidate[3], existing[2], existing[3]) * 0.35:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(candidate)
+    return kept
 
 
 def apply_face_preserving_threshold(

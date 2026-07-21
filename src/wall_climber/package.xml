@@ -5,7 +5,7 @@
   <version>0.0.0</version>
   <description>Four-cable Webots drawing robot package.</description>
   <maintainer email="2144934@std.hu.edu.jo">hisham</maintainer>
-  <license>Apache-2.0</license>
+  <license>MIT</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
@@ -26,8 +26,11 @@
   <exec_depend>python3-multipart</exec_depend>
   <exec_depend>python3-uvicorn</exec_depend>
   <exec_depend>python3-websockets</exec_depend>
+  <!-- voice: pip install faster-whisper silero-vad torch; Whisper weights auto-download on first use -->
   <exec_depend>wall_climber_interfaces</exec_depend>
   <exec_depend>wall_climber_draw_body</exec_depend>
+  <exec_depend>potrace</exec_depend>
+  <!-- autotrace: optional POC backend; install via scripts/install_autotrace.sh -->
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

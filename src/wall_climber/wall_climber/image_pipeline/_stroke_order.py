@@ -8,6 +8,7 @@ This minimises pen-up travel between strokes.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass
 
 
@@ -39,6 +40,7 @@ def optimise_stroke_order(
     *,
     allow_reverse: bool = True,
     max_2opt_iterations: int = 200,
+    max_time_ms: float | None = 1500.0,
 ) -> OrderingResult:
     """Reorder ``strokes`` so per-stroke pen-up travel is minimised."""
     materialised = list(strokes)
@@ -49,12 +51,21 @@ def optimise_stroke_order(
             iterations=0,
         )
 
+    deadline = (
+        time.perf_counter() + (max(0.0, float(max_time_ms)) / 1000.0)
+        if max_time_ms is not None
+        else None
+    )
+
     # Step 1: nearest-neighbour seed.
     ordered: list[Stroke] = []
     remaining = list(materialised)
     current = remaining.pop(0)
     ordered.append(current)
     while remaining:
+        if deadline is not None and time.perf_counter() >= deadline:
+            ordered.extend(remaining)
+            break
         best_index = 0
         best_cost = float('inf')
         best_reversed = False
@@ -81,9 +92,14 @@ def optimise_stroke_order(
     iteration = 0
     improved = True
     while improved and iteration < max_2opt_iterations:
+        if deadline is not None and time.perf_counter() >= deadline:
+            break
         improved = False
         iteration += 1
         for i in range(0, len(ordered) - 1):
+            if deadline is not None and time.perf_counter() >= deadline:
+                improved = False
+                break
             for j in range(i + 2, len(ordered)):
                 a_end = ordered[i].end
                 b_start = ordered[i + 1].start

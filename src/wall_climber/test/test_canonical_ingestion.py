@@ -20,6 +20,16 @@ from wall_climber.vector_pipeline import (
 )
 
 
+def _backend_source() -> str:
+    pkg = Path(__file__).resolve().parents[1] / 'wall_climber'
+    parts = [(pkg / 'web_server.py').read_text(encoding='utf-8')]
+    http_dir = pkg / 'http'
+    if http_dir.is_dir():
+        for path in sorted(http_dir.rglob('*.py')):
+            parts.append(path.read_text(encoding='utf-8'))
+    return '\n'.join(parts)
+
+
 def test_draw_strokes_to_canonical_plan_builds_direct_commands() -> None:
     plan = draw_strokes_to_canonical_plan(
         (
@@ -152,25 +162,19 @@ def test_dejavu_sans_uses_tighter_letter_spacing_than_default_text_spacing() -> 
 
 
 def test_web_server_main_path_no_longer_uses_legacy_pen_stroke_helper() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / 'wall_climber' / 'web_server.py'
-    ).read_text(encoding='utf-8')
+    source = _backend_source()
     assert 'canonical_plan_from_pen_strokes(' not in source
 
 
 def test_web_server_uses_split_ingestion_and_canonical_ops_modules() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / 'wall_climber' / 'web_server.py'
-    ).read_text(encoding='utf-8')
+    source = _backend_source()
     assert 'from wall_climber.ingestion.text import (' in source
     assert 'from wall_climber.ingestion.svg import vectorize_svg' in source
     assert 'from wall_climber.canonical_ops import (' in source
 
 
 def test_web_server_primitive_transport_publish_is_wired() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / 'wall_climber' / 'web_server.py'
-    ).read_text(encoding='utf-8')
+    source = _backend_source()
     assert 'publish_execution_plan(' in source
     assert 'PRIMITIVE_PATH_PLAN_TOPIC' in source
     assert '_draw_plan_pub' not in source
@@ -179,9 +183,7 @@ def test_web_server_primitive_transport_publish_is_wired() -> None:
 
 
 def test_web_server_text_commit_omits_oversized_legacy_normalized_plan() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / 'wall_climber' / 'web_server.py'
-    ).read_text(encoding='utf-8')
+    source = _backend_source()
     # The legacy normalized-plan helpers were removed alongside the dead text
     # commit endpoints. The contract that survives is that ``primitive_path_plan``
     # is still the chosen transport and that no DrawPlan / oversized stroke
@@ -192,16 +194,12 @@ def test_web_server_text_commit_omits_oversized_legacy_normalized_plan() -> None
 
 
 def test_raw_draw_plan_endpoint_remains_explicitly_disabled() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / 'wall_climber' / 'web_server.py'
-    ).read_text(encoding='utf-8')
+    source = _backend_source()
     assert "detail='raw /api/draw/plan has been removed; use /api/preview then /api/draw with preview_id'" in source
 
 
 def test_web_server_exposes_debug_endpoints() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / 'wall_climber' / 'web_server.py'
-    ).read_text(encoding='utf-8')
+    source = _backend_source()
     assert "@app.get('/api/debug/last-plan')" in source
     assert "@app.get('/api/debug/last-execution')" in source
     assert "@app.get('/api/debug/last-curve-fit')" in source
@@ -209,9 +207,7 @@ def test_web_server_exposes_debug_endpoints() -> None:
 
 
 def test_web_server_exposes_unified_preview_draw_routes() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / 'wall_climber' / 'web_server.py'
-    ).read_text(encoding='utf-8')
+    source = _backend_source()
     assert "@app.post('/api/preview')" in source
     assert "@app.post('/api/draw')" in source
     assert "@app.delete('/api/preview/{preview_id}')" in source
@@ -222,18 +218,23 @@ def test_web_server_exposes_unified_preview_draw_routes() -> None:
 
 
 def test_web_server_text_font_source_validation_includes_dejavu_sans() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / 'wall_climber' / 'web_server.py'
-    ).read_text(encoding='utf-8')
+    source = _backend_source()
     assert '"dejavu_sans"' in source
     assert 'font_source must be one of ["relief_singleline", "hershey_sans_1", "dejavu_sans"]' in source
     assert "'glyph_height_m': glyph_scale_m" in source
 
 
+def _web_ui_source() -> str:
+    web_dir = Path(__file__).resolve().parents[1] / 'web'
+    parts = [
+        (web_dir / 'index.html').read_text(encoding='utf-8'),
+        (web_dir / 'js' / 'app.js').read_text(encoding='utf-8'),
+    ]
+    return '\n'.join(parts)
+
+
 def test_index_exposes_curve_overlay_controls() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / 'web' / 'index.html'
-    ).read_text(encoding='utf-8')
+    source = _web_ui_source()
     assert 'overlay-raw-toggle' in source
     assert 'overlay-curves-toggle' in source
     assert 'overlay-fallback-toggle' in source
@@ -252,14 +253,16 @@ def test_index_exposes_curve_overlay_controls() -> None:
 
 
 def test_index_uses_clean_preview_draw_contract() -> None:
-    source = (
-        Path(__file__).resolve().parents[1] / 'web' / 'index.html'
-    ).read_text(encoding='utf-8')
+    source = _web_ui_source()
     assert "applyVectorPreview('text', payload, { origin: 'text', boardVisible: false })" in source
     assert 'function beginPreviewInteraction(event)' in source
     assert 'function movePreviewInteraction(event)' in source
     assert 'function drawPreviewPlacementControls(layout)' in source
     assert "clearVectorPreview(false);" in source
+    assert 'Undo Last Write' in source
+    assert 'async function undoLastWrite()' in source
+    assert '/api/text/undo_last_write' in source
+    assert "syncPlacementDefaults(true)" in source
     assert "new Set(['relief_singleline', 'hershey_sans_1', 'dejavu_sans'])" in source
     assert 'execution_preview_svg' in source
     assert 'currentPreviewId' in source
@@ -278,7 +281,7 @@ def test_executor_source_declares_chunked_execution_controls() -> None:
     assert 'declare_parameter("chunk_max_samples", 2400);' in source
     assert 'declare_parameter("text_draw_resample_step_m", 0.0038);' in source
     assert 'declare_parameter("text_travel_resample_step_m", 0.012);' in source
-    assert 'active_mode_ == "text"' in source
+    assert 'mode == "text"' in source
     assert 'build_next_schedule_chunk' in source
     assert '"chunk_count":' in source or '\\"chunk_count\\":' in source
 

@@ -1,0 +1,22 @@
+digraph classification_diagram {
+    graph [rankdir=TB, bgcolor=white, splines=ortho, nodesep=0.5, ranksep=0.65, fontname="Arial"];
+    node [shape=box, style="rounded", fontname="Arial", fontsize=13, margin="0.2,0.12"];
+    edge [fontname="Arial", fontsize=11, arrowsize=0.8];
+
+    root [label="Automated Drawing Robots"];
+    rigid [label="Rigid Frame\n(Cartesian / CNC)"];
+    cdpr [label="Cable-Driven (CDPR)"];
+    axi [label="AxiDraw / Gantry\nHigh precision, limited scale"];
+    vplot [label="2-Cable V-Plotter\nMakelangelo — sway risk"];
+    four [label="4-Cable CDPR\nSkycam-class stability"];
+    artie [label="Artie\n(this project)", style="rounded,bold"];
+    stack [label="Artie software stack\n• ROS 2 + FastDDS\n• FastAPI Web Console\n• SwinIR / AniLines / Informative\n• AutoTrace / Potrace\n• NN + 2-opt stroke reorder", margin="0.25,0.2"];
+
+    root -> rigid;
+    root -> cdpr;
+    rigid -> axi;
+    rigid -> vplot;
+    cdpr -> four;
+    cdpr -> artie;
+    artie -> stack;
+}

@@ -1,0 +1,27 @@
+digraph pipeline_flow_part1 {
+    graph [rankdir=TB, bgcolor=white, splines=ortho, nodesep=0.35, ranksep=0.42, fontname="Arial"];
+    node [shape=box, style="rounded", fontname="Arial", fontsize=12, margin="0.15,0.10"];
+    edge [fontname="Arial", fontsize=10, arrowsize=0.7];
+
+    label="Part 1 of 2 — Input and preprocessing";
+    labelloc=t;
+    fontsize=13;
+    fontname="Arial";
+
+    start [label="Start", shape=circle, width=0.4, fixedsize=true];
+    upload [label="User upload\nimage / SVG / text"];
+    mode [label="Preprocess mode?", shape=diamond, width=1.8, height=0.9, fixedsize=true];
+    photo [label="Photo path:\nSwinIR → Informative or AniLines"];
+    coloring [label="Coloring Book:\nSwinIR (optional) or Raw Print"];
+    vector [label="Vectorize\nAutoTrace or Potrace"];
+    canonical [label="Canonical Path +\ncurve fit preview"];
+    next [label="→ Continue to Part 2 (execution)", shape=plaintext, fontsize=11];
+
+    {rank=same; photo; coloring;}
+    start -> upload -> mode;
+    mode -> photo [label=" Photo "];
+    mode -> coloring [label=" Coloring Book "];
+    photo -> vector;
+    coloring -> vector;
+    vector -> canonical -> next;
+}

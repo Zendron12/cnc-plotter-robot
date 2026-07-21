@@ -1,92 +1,111 @@
-# Whiteboard Plotter (Webots Cable-Driven Robot)
+<p align="center">
+  <img src="docs/images/simulation.png" alt="Artie – Cable-Driven Whiteboard Robot" width="700">
+</p>
 
-This repository contains a ROS 2 + Webots simulation for a cable-driven wall
-robot that draws on a large whiteboard. The system uses a four-cable kinematic
-supervisor, a Python backend with a browser UI, and a C++ executor to publish
-cable setpoints.
+<h1 align="center">Artie — Whiteboard Plotter</h1>
 
-## Highlights
+<p align="center">
+  A cable-driven robot that draws on large whiteboards, powered by ROS 2 and Webots.
+</p>
 
-- Webots-based cable-driven whiteboard robot (not a rail/CNC plotter).
-- Four-cable kinematic supervisor plugin with board-safe workspace checks.
-- Python backend + browser UI for preview and drawing.
-- Canonical path pipeline with ROS transport to the draw executor.
-- Sketch Centerline preview pipeline for clean line-art input.
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#gallery">Gallery</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#license">License</a>
+</p>
 
-## Repository Layout
+---
 
-- `src/wall_climber`:
-  - Python app package (Webots plugins, FastAPI backend, UI assets, ingestion).
-  - URDF/Xacro models, Webots worlds, and shared YAML config.
-- `src/wall_climber_interfaces`:
-  - ROS 2 message definitions (path primitives, cable setpoints).
-- `src/wall_climber_draw_body`:
-  - C++ executor, geometry sampling, and transport conversions.
+## Features
 
-## Requirements
+- **Cable-Driven Kinematics** — Four-cable system with real-time workspace safety checks.
+- **Image-to-Drawing Pipeline** — Upload a photo or sketch → AI preprocessing → vectorization → robot draws it.
+- **Text Writing** — Type or dictate text; the robot writes it in single-line fonts with column layout support.
+- **Voice Dictation** — Whisper-based speech-to-text, speaks and the robot writes.
+- **Live Web UI** — Browser-based control panel with real-time board preview, crop, erase, and draw tools.
+- **Multiple Vectorizers** — AutoTrace (centerline) and Potrace (outline), selectable per job.
+- **AI Line Art** — SwinIR upscaling + cloud/local line-art extraction for photos.
+- **Webots Simulation** — Full 3D simulation with physics before deploying to hardware.
 
-- Ubuntu 22.04
-- ROS 2 Humble
-- Webots (via `webots_ros2_driver`)
-- Python dependencies from `package.xml` (FastAPI, OpenCV, scikit-image, etc.)
+## Gallery
 
-## Build
+<p align="center">
+  <img src="docs/images/webots-simulation.png" alt="Webots 3D Simulation" width="700"><br>
+  <em>Webots simulation — the robot draws Nyan Cat on the whiteboard</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/board-workspace.png" alt="Drawing Result" width="700"><br>
+  <em>Board workspace — text + diagram drawn by the robot</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/drawing-result.png" alt="Complex Drawing" width="700"><br>
+  <em>Complex illustration — 32k+ points drawn autonomously</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/web-ui-text.png" alt="Web UI – Text Input" width="700"><br>
+  <em>Web UI — text input with voice dictation and column layout</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/web-ui-settings.png" alt="Web UI – Image Settings" width="700"><br>
+  <em>Web UI — image processing settings and vectorization controls</em>
+</p>
+
+## Quick Start
+
+### Requirements
+
+- Ubuntu 22.04 / ROS 2 Humble
+- Webots R2025a+ (via `webots_ros2_driver`)
+- Python 3.10+
+
+### Build
 
 ```bash
 source /opt/ros/humble/setup.bash
 colcon build --packages-select wall_climber_interfaces wall_climber_draw_body wall_climber --symlink-install
 ```
 
-## Run (Simulation + Web UI)
+### Run
 
 ```bash
-source /opt/ros/humble/setup.bash
 ros2 launch wall_climber my_robot.launch.py
 ```
 
-- Web UI: http://localhost:8080
-- Rosbridge: ws://localhost:9090
+Open **http://localhost:8080** in your browser.
 
-## Sketch Centerline Preview (Line Art)
+| Argument | Default | Description |
+|---|---|---|
+| `world` | `wall_world_basic.wbt` | Webots world file |
+| `whisper_device` | `auto` | Whisper device: `auto`, `cuda`, `cpu` |
 
-Sketch Centerline converts high-contrast line art into centerline strokes and
-returns a preview SVG plus cached drawing plan metadata.
+## Architecture
 
-Endpoint:
-
-```text
-POST /api/sketch-centerline/preview
+```
+src/
+├── wall_climber/              # Main Python package
+│   ├── wall_climber/          # Robot logic, image pipeline, web server
+│   ├── web/                   # Frontend (HTML/JS/CSS)
+│   ├── config/                # YAML configuration
+│   ├── urdf/                  # Robot URDF/Xacro models
+│   └── worlds/                # Webots world files
+├── wall_climber_interfaces/   # ROS 2 message definitions
+└── wall_climber_draw_body/    # C++ cable draw executor
 ```
 
-Example:
-
-```bash
-curl -s -X POST http://127.0.0.1:8080/api/sketch-centerline/preview \
-  -F "file=@sketch.png" \
-  -F "margin_m=0.05" | python3 -m json.tool
-```
-
-For full parameters and tuning guidance, see:
-- `docs/SKETCH_CENTERLINE_PIPELINE.md`
-
-## Configuration
-
-Key configuration is centralized in:
-
-- `src/wall_climber/config/cable_robot.yaml`
-- `src/wall_climber/urdf/*.xacro`
-- `src/wall_climber/worlds/*.wbt`
-
-These define board dimensions, anchors, carriage geometry, safety bounds, and
-Webots plugin wiring. Changes should be made carefully.
+**Pipeline**: Upload → AI Preprocess → Vectorize → Optimize stroke order → ROS transport → Cable executor → Drawing
 
 ## Tests
 
 ```bash
-PYTHONPATH=src/wall_climber python3 -m pytest -q src/wall_climber/test
+PYTHONPATH=src/wall_climber python3 -m pytest -q src/wall_climber/test -p no:anyio
 ```
 
-## License and Usage
+## License
 
-See `LICENSE`. This project is provided for personal, non-commercial use only.
-Modification, redistribution, or commercial use is not permitted.
+MIT — see [LICENSE](LICENSE).

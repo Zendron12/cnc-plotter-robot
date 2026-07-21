@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import time
 from typing import Any
 
 from wall_climber import _optimizer_geometry as _geom
@@ -21,6 +22,7 @@ from wall_climber.canonical_path import (
 
 
 _EPS = _geom.EPS
+_REORDER_MAX_TIME_S = 2.0
 
 
 @dataclass(frozen=True)
@@ -549,10 +551,16 @@ def _reorder_units(
     units: tuple[_DrawUnit, ...],
     *,
     start_point: Point2D | None = None,
+    max_time_s: float | None = _REORDER_MAX_TIME_S,
 ) -> tuple[_DrawUnit, ...]:
     if len(units) <= 1:
         return units
 
+    deadline = (
+        time.perf_counter() + max(0.0, float(max_time_s))
+        if max_time_s is not None
+        else None
+    )
     remaining = list(units)
 
     def oriented_start_key(unit: _DrawUnit) -> tuple[float, float, float, int]:
@@ -582,6 +590,9 @@ def _reorder_units(
     current_end = current.end
 
     while remaining:
+        if deadline is not None and time.perf_counter() >= deadline:
+            ordered.extend(remaining)
+            break
         best_choice: tuple[int, _DrawUnit, float, tuple[float, float, float, int]] | None = None
         for list_index, unit in enumerate(remaining):
             for candidate in (unit, _reverse_unit(unit)):

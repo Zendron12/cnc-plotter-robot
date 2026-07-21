@@ -1,8 +1,11 @@
 import os
 import re
+import signal
 import socket
 import shutil
 import subprocess
+import time
+import contextlib
 from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
@@ -10,12 +13,13 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, EmitEvent, RegisterEventHandler, SetEnvironmentVariable
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
-from launch.substitutions import Command, LaunchConfiguration
+from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution, TextSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from webots_ros2_driver.webots_controller import WebotsController
 from webots_ros2_driver.webots_launcher import WebotsLauncher
 
+from wall_climber.port_utils import free_tcp_port, port_is_available
 from wall_climber.shared_config import load_shared_config
 
 
@@ -29,26 +33,41 @@ def _require_supervisor_action(webots_launcher: WebotsLauncher):
     return supervisor_action
 
 
-def _port_is_available(port: int) -> bool:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(('0.0.0.0', port))
-        return True
-    except OSError:
-        return False
-    finally:
-        sock.close()
+def _select_fixed_port(requested_port: int, *, label: str = 'TCP') -> int:
+    """Bind one fixed port; free stale listeners first."""
+    port = max(1024, int(requested_port))
+    if port_is_available(port):
+        return port
+    free_tcp_port(port)
+    time.sleep(0.5)
+    if port_is_available(port):
+        return port
+    from wall_climber.port_utils import find_listener_pids
+
+    holders = find_listener_pids(port)
+    hint = f' (pids: {holders})' if holders else ''
+    raise RuntimeError(
+        f'{label} port {port} is busy{hint}. Stop the previous launch (Ctrl+C), then run '
+        f'pkill -9 -f rosbridge; pkill -9 -f wall_climber/web_server — and relaunch.'
+    )
 
 
-def _select_available_port(requested_port: int, *, attempts: int = 32, label: str = 'TCP') -> int:
+def _select_internal_port(requested_port: int, *, attempts: int = 16, label: str = 'TCP') -> int:
+    """Prefer ``requested_port``; scan forward for an internal service (e.g. rosbridge)."""
     base = max(1024, int(requested_port))
+    free_tcp_port(base)
+    time.sleep(0.25)
     for offset in range(attempts):
         candidate = base + offset
-        if _port_is_available(candidate):
+        if port_is_available(candidate):
+            if offset:
+                print(
+                    f'[wall_climber.launch] {label} port {base} is busy; '
+                    f'using internal port {candidate} (browser stays on :8080).'
+                )
             return candidate
     raise RuntimeError(
-        f'Unable to find a free {label} port starting at {base} (checked {attempts} ports).'
+        f'No free {label} port in range {base}-{base + attempts - 1}.'
     )
 
 
@@ -141,6 +160,8 @@ def _cleanup_stale_launch_processes() -> None:
         # Long-lived sub-processes started by my_robot.launch.py
         'wall_climber/web_server',
         'rosbridge_websocket',
+        'rosbridge_server',
+        'rosbridge',
         'webots-controller',
         'cable_draw_executor',
         'ros2_supervisor',
@@ -149,6 +170,13 @@ def _cleanup_stale_launch_processes() -> None:
     )
     for pattern in patterns:
         try:
+            subprocess.run(
+                ['pkill', '-15', '-f', pattern],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2.0,
+            )
             subprocess.run(
                 ['pkill', '-9', '-f', pattern],
                 check=False,
@@ -159,6 +187,9 @@ def _cleanup_stale_launch_processes() -> None:
         except (FileNotFoundError, subprocess.TimeoutExpired):
             # pkill missing in some minimal images; nothing to do.
             pass
+    for port in (8080, 9090):
+        free_tcp_port(port)
+    time.sleep(1.0)
 
 
 def generate_launch_description():
@@ -169,11 +200,11 @@ def generate_launch_description():
     requested_webots_port = os.environ.get('WEBOTS_PORT', '1234')
     requested_rosbridge_port = os.environ.get('ROSBRIDGE_PORT', '9090')
     try:
-        selected_webots_port = _select_available_port(
+        selected_webots_port = _select_fixed_port(
             int(requested_webots_port),
             label='Webots',
         )
-        selected_rosbridge_port = _select_available_port(
+        selected_rosbridge_port = _select_internal_port(
             int(requested_rosbridge_port),
             label='rosbridge',
         )
@@ -185,16 +216,6 @@ def generate_launch_description():
     display_environment = _resolve_webots_display_environment()
     webots_port = str(selected_webots_port)
     rosbridge_port = int(selected_rosbridge_port)
-    if webots_port != requested_webots_port:
-        print(
-            f'[wall_climber.launch] Requested Webots port {requested_webots_port} is busy; '
-            f'using {webots_port} instead.'
-        )
-    if str(rosbridge_port) != requested_rosbridge_port:
-        print(
-            f'[wall_climber.launch] Requested rosbridge port {requested_rosbridge_port} is busy; '
-            f'using {rosbridge_port} instead.'
-        )
     selected_display = display_environment.get('DISPLAY')
     current_display = os.environ.get('DISPLAY')
     if selected_display and selected_display != current_display:
@@ -214,8 +235,13 @@ def generate_launch_description():
     webots_prefix = LaunchConfiguration('webots_prefix')
     enable_webots_trail = LaunchConfiguration('enable_webots_trail')
     writer_mode = LaunchConfiguration('writer_mode')
+    world = LaunchConfiguration('world')
+    whisper_device = LaunchConfiguration('whisper_device')
 
-    world_path = os.path.join(pkg_dir, 'worlds', 'wall_world_basic.wbt')
+    world_path = PathJoinSubstitution([
+        TextSubstitution(text=os.path.join(pkg_dir, 'worlds')),
+        world,
+    ])
     climber_xacro_path = os.path.join(pkg_dir, 'urdf', 'my_robot.urdf.xacro')
     supervisor_xacro_path = os.path.join(pkg_dir, 'urdf', 'cable_supervisor.urdf.xacro')
 
@@ -316,9 +342,20 @@ def generate_launch_description():
             default_value='off',
             description='Initial UI mode: off | text | draw',
         ),
+        DeclareLaunchArgument(
+            'world',
+            default_value='wall_world.wbt',
+            description='Webots world file name under the package worlds/ directory.',
+        ),
+        DeclareLaunchArgument(
+            'whisper_device',
+            default_value='auto',
+            description='Whisper inference device: auto | cuda | cpu.',
+        ),
         SetEnvironmentVariable('ALSOFT_DRIVERS', 'null'),
         SetEnvironmentVariable('WEBOTS_TMPDIR', '/tmp'),
         SetEnvironmentVariable('TMPDIR', '/tmp'),
+        SetEnvironmentVariable('WALL_CLIMBER_WHISPER_DEVICE', whisper_device),
         # Tell FastDDS to skip the shared-memory transport. /dev/shm is
         # restricted in the dev container, so SHM allocation always fails
         # and floods the logs with "Failed to create segment" errors

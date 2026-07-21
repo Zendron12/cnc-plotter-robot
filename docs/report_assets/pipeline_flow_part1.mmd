@@ -1,0 +1,17 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TD
+    start([Start])
+    upload["User upload<br/>image / SVG / text"]
+    mode{"Preprocess mode?"}
+    photo["Photo path:<br/>SwinIR → Informative or AniLines"]
+    coloring["Coloring Book:<br/>SwinIR optional or Raw Print"]
+    vector["Vectorize<br/>AutoTrace or Potrace"]
+    canonical["Canonical Path +<br/>curve fit preview"]
+    next["→ Continue to Part 2<br/>(execution stages)"]
+
+    start --> upload --> mode
+    mode -->|Photo| photo
+    mode -->|Coloring Book| coloring
+    photo --> vector
+    coloring --> vector
+    vector --> canonical --> next

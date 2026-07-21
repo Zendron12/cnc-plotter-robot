@@ -6,6 +6,7 @@ CABLE_SETPOINT_TOPIC = '/wall_climber/cable_setpoint'
 CABLE_EXECUTOR_STATUS_TOPIC = '/wall_climber/cable_executor_status'
 CABLE_SUPERVISOR_STATUS_TOPIC = '/wall_climber/cable_supervisor_status'
 EXECUTION_DIAGNOSTICS_TOPIC = '/wall_climber/executor_diagnostics'
+EXECUTION_CANCEL_TOPIC = '/wall_climber/execution_cancel'
 
 MODE_OFF = 'off'
 MODE_TEXT = 'text'

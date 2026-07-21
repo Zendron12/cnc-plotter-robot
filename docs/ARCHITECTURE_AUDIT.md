@@ -24,7 +24,7 @@ Primary launch entrypoint:
 
 Launch starts:
 
-- Webots with `worlds/wall_world.wbt`.
+- Webots with `worlds/wall_world_basic.wbt`.
 - The Webots ROS supervisor.
 - `urdf_spawner`, which spawns `wall_climber` from `urdf/my_robot.urdf.xacro`.
 - A Webots controller for `wall_climber`.
@@ -119,8 +119,7 @@ Ingestion and vectorization:
 - `wall_climber/vector_pipeline.py`: compatibility facade and much of the existing text/SVG/image vector logic.
 - `wall_climber/ingestion/text.py`: text vectorization facade.
 - `wall_climber/ingestion/svg.py`: SVG vectorization facade.
-- `wall_climber/ingestion/image.py`: image vectorization facade.
-- `wall_climber/ingestion/image_curve_fitting.py`: image contour tracing, centerline behavior, curve fitting, route debug output, and metadata mapping.
+- `wall_climber/image_pipeline/`: raster sketch/image vectorization, curve fitting, and autotrace/potrace adapters.
 - `wall_climber/ingestion/upload_routing.py`: upload classification for SVG versus raster image input.
 
 The project already has a canonical path model. The new `DrawingPathPlan` added in this task is only a future-facing image-pipeline interface and must not replace or wire into the current runtime yet.
@@ -182,13 +181,13 @@ Useful commands:
 
 - `colcon list`
 - `colcon graph`
-- `PYTHONPATH=src/wall_climber python3 -m pytest -q src/wall_climber/test`
+- `PYTHONPATH=src/wall_climber python3 -m pytest -q src/wall_climber/test -p no:anyio`
 - `source /opt/ros/humble/setup.bash && colcon build --packages-select wall_climber_interfaces wall_climber_draw_body wall_climber --cmake-args -DBUILD_TESTING=ON`
 - `source /opt/ros/humble/setup.bash && colcon test --packages-select wall_climber_interfaces wall_climber_draw_body --event-handlers console_direct+`
 
 Observed results during this audit:
 
-- `PYTHONPATH=src/wall_climber python3 -m pytest -q src/wall_climber/test`: 55 passed.
+- `PYTHONPATH=src/wall_climber python3 -m pytest -q src/wall_climber/test -p no:anyio`: run after audit remediation; use `-p no:anyio` to avoid optional anyio plugin conflicts.
 - `colcon build --packages-select wall_climber_interfaces wall_climber_draw_body --cmake-args -DBUILD_TESTING=ON`: failed until ROS Humble was sourced; failure was missing `ament_cmake`.
 - `source /opt/ros/humble/setup.bash && colcon build --packages-select wall_climber_interfaces wall_climber_draw_body --cmake-args -DBUILD_TESTING=ON`: passed.
 - `source /opt/ros/humble/setup.bash && colcon test --packages-select wall_climber_interfaces wall_climber_draw_body --event-handlers console_direct+`: passed, including `test_geometry_kernel` and `test_transport_conversions`.
@@ -201,6 +200,5 @@ Observed results during this audit:
 2. Add a future adapter from the new `DrawingPathPlan` DTO to the existing `CanonicalPathPlan`, but do not wire it into production until tests cover parity.
 3. Add focused tests for any new image pipeline module before replacing existing vectorization behavior.
 4. Add voice command parsing as a separate Python layer that produces the same neutral drawing plan format.
-5. Add a small numbered image library service around the manifest after the manifest contract is reviewed.
-6. Consider fixing Python test discovery in colcon and removing the `tests_require` warning.
-7. Treat any move beyond kinematic four-cable behavior, such as tension or slack modeling, as a separate future design task with its own tests and simulator plan.
+5. Consider fixing Python test discovery in colcon and removing the `tests_require` warning.
+6. Treat any move beyond kinematic four-cable behavior, such as tension or slack modeling, as a separate future design task with its own tests and simulator plan.

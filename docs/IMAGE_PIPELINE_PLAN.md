@@ -2,7 +2,7 @@
 
 This document defines the future best-practice image pipeline for the Webots cable-driven whiteboard robot. It is a design plan only. The current task does not replace the existing production image pipeline.
 
-An offline adapter design exists for converting tested `DrawingPathPlan` output into the current `CanonicalPathPlan` model. Sketch Centerline Mode now exists as an internal pipeline module with a preview-only backend endpoint. It is not enabled for robot drawing. Future PNG, SVG, photo, voice, and numbered-library paths should produce `DrawingPathPlan` first, with runtime connection added later after mode-specific tests exist.
+An offline adapter design exists for converting tested `DrawingPathPlan` output into the current `CanonicalPathPlan` model. Sketch Centerline Mode is enabled for preview and draw via `POST /api/preview` and `POST /api/draw`. Coloring-book mode with `image_raw_print` skips AI preprocess but still vectorizes the lightweight grayscale/lineart output (potrace or autotrace). Future PNG, SVG, photo, and voice paths should produce `DrawingPathPlan` first, with runtime connection added later after mode-specific tests exist.
 
 ## A. Sketch Centerline Mode
 
@@ -20,7 +20,7 @@ Implemented internal foundation:
 - Trace graph paths into strokes.
 - Simplify strokes while preserving endpoints and corners.
 - Emit a neutral `DrawingPathPlan`.
-- Preview through `POST /api/sketch-centerline/preview` without publishing to the robot.
+- Preview through `POST /api/preview`, then draw through `POST /api/draw` with the cached `preview_id`.
 
 ## B. SVG/Vector Mode
 

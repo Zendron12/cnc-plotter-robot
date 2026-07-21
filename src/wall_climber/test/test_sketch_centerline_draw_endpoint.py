@@ -9,6 +9,8 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from wall_climber import web_server
+
+from conftest import fake_autotrace_plan
 from wall_climber.canonical_optimizer import optimize_canonical_plan
 from wall_climber.canonical_path import CanonicalPathPlan, LineSegment, PenDown, PenUp, TravelMove
 from wall_climber.runtime_topics import MODE_DRAW, PEN_MODE_AUTO
@@ -141,6 +143,12 @@ def _fake_ros_messages(monkeypatch):
     monkeypatch.setattr(web_server, 'PrimitivePathPlan', _FakePrimitivePathPlan)
 
 
+@pytest.fixture(autouse=True)
+def _mock_autotrace_preview(monkeypatch):
+    monkeypatch.setattr(web_server, 'is_autotrace_available', lambda: True)
+    monkeypatch.setattr(web_server, 'vectorize_autotrace_image_to_plan', fake_autotrace_plan)
+
+
 def _client_and_runtime(*, ready: bool = True) -> tuple[TestClient, _FakeRuntime]:
     runtime = _FakeRuntime(ready=ready)
     return TestClient(web_server.create_app(runtime)), runtime
@@ -157,7 +165,6 @@ def _preview(
     data = {
         'preview_geometry_mode': preview_geometry_mode,
         'curve_tolerance_px': curve_tolerance_px,
-        'optimization_preset': 'detail',
         'optimize_stroke_order': 'true',
     }
     if extra_data:
@@ -229,7 +236,7 @@ def test_draw_uses_cached_smooth_canonical_plan() -> None:
     assert response.status_code == 200, response.text
     body = response.json()
     assert body['ok'] is True
-    assert body['pipeline_mode'] == 'sketch_centerline'
+    assert body['pipeline_mode'] == 'sketch_autotrace'
     assert body['used_cached_executable_payload'] is True
     assert body['optimized'] is True
     assert body['canonical_command_count'] >= 1
@@ -249,7 +256,7 @@ def test_draw_uses_cached_polyline_canonical_plan() -> None:
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body['pipeline_mode'] == 'sketch_centerline'
+    assert body['pipeline_mode'] == 'sketch_autotrace'
     assert body['used_cached_executable_payload'] is True
     primitive_types = [primitive.type for primitive in runtime.node.published_plans[0].primitives]
     assert _FakePathPrimitive.LINE_SEGMENT in primitive_types

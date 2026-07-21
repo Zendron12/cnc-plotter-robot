@@ -53,3 +53,21 @@ def test_smooth_curve_conversion_preserves_sharp_corner() -> None:
         and command.end == points[-1]
         for command in primitives
     )
+
+
+def test_zero_fit_time_limit_means_unlimited() -> None:
+    points = [
+        (0.1 + (0.8 * t), 0.7 - (0.45 * math.sin(math.pi * t)))
+        for t in [index / 18.0 for index in range(19)]
+    ]
+
+    result = drawing_path_plan_to_smooth_canonical(
+        _plan(points),
+        curve_tolerance_m=0.02,
+        max_curve_segment_points=32,
+        max_fit_time_ms=0.0,
+    )
+
+    assert result.metadata['max_fit_time_ms'] == 0.0
+    assert not any('time budget exceeded' in warning.lower() for warning in result.metadata['warnings'])
+    assert result.metadata['curve_primitive_count'] >= 1

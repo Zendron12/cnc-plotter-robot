@@ -4,8 +4,11 @@ install/
 log/
 CMakeFiles/
 
-# Do not upload compressed archives
+# Large binary files — not code
 *.zip
+*.docx
+*.docx.bak
+*.pdf
 
 # Local browser automation artifacts
 .playwright-cli/
@@ -14,7 +17,17 @@ output/
 # Python cache artifacts
 **/__pycache__/
 **/*.pyc
+.pytest_cache/
 
-# Editor settings
+# Editor / IDE settings
 .vscode/
 .devcontainer/
+.cursor/
+.kiro/
+
+# Local reference photos (not code)
+photos/
+
+# OS files
+.DS_Store
+Thumbs.db

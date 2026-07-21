@@ -1,0 +1,38 @@
+%%{init: {'theme': 'base', 'themeVariables': {
+  'fontSize': '18px',
+  'fontFamily': 'Arial, sans-serif',
+  'primaryTextColor': '#111827',
+  'primaryColor': '#ffffff',
+  'primaryBorderColor': '#111827',
+  'lineColor': '#111827',
+  'secondaryColor': '#ffffff',
+  'tertiaryColor': '#ffffff'
+}}}%%
+flowchart TD
+    start([Start])
+    upload["User upload<br/>image / SVG / text"]
+    mode{"Preprocess mode?"}
+    photo["Photo path:<br/>SwinIR → Informative or AniLines"]
+    coloring["Coloring Book:<br/>SwinIR optional or Raw Print"]
+    vector["Vectorize<br/>AutoTrace or Potrace"]
+    canonical["Canonical Path +<br/>curve fit preview"]
+    tsp["Stroke reorder<br/>NN + 2-opt, time budget"]
+    executor["C++ Executor<br/>Inverse kinematics @ 50 Hz"]
+    ros["ROS 2 / DDS<br/>motor commands"]
+    draw["Draw on whiteboard"]
+    home["Return home"]
+    finish([End])
+
+    start --> upload
+    upload --> mode
+    mode -->|Photo| photo
+    mode -->|Coloring Book| coloring
+    photo --> vector
+    coloring --> vector
+    vector --> canonical
+    canonical --> tsp
+    tsp --> executor
+    executor --> ros
+    ros --> draw
+    draw --> home
+    home --> finish

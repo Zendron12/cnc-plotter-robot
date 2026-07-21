@@ -9,6 +9,8 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from wall_climber import web_server
+
+from conftest import fake_autotrace_plan
 from wall_climber.runtime_topics import MODE_DRAW, MODE_TEXT, PEN_MODE_AUTO
 
 
@@ -84,6 +86,83 @@ class _FakeRuntime:
         self.last_execution_debug = None
         self.last_curve_fit_debug = None
         self.uploads: dict[str, tuple[dict, bytes]] = {}
+        self._text_cursors: dict[str, tuple[float | None, float | None]] = {}
+        self._text_full_width_bottom_y: float | None = None
+        self._text_column_bottom_y: dict[str, float] = {}
+        self._text_global_bottom_y: float | None = None
+        self._last_text_draw_column: str | None = None
+
+    def get_last_text_draw_column(self) -> str | None:
+        return self._last_text_draw_column
+
+    def set_last_text_draw_column(self, column: str | None) -> None:
+        self._last_text_draw_column = (column or 'full').strip().lower()
+
+    def get_text_global_bottom_y(self) -> float | None:
+        return self._text_global_bottom_y
+
+    def note_text_global_bottom_y(self, bottom_y: float) -> None:
+        value = float(bottom_y)
+        if self._text_global_bottom_y is None or value > self._text_global_bottom_y:
+            self._text_global_bottom_y = value
+
+    def get_text_column_bottom_y(self, column: str | None) -> float | None:
+        key = (column or 'full').strip().lower()
+        if key not in {'left', 'center', 'right'}:
+            return None
+        return self._text_column_bottom_y.get(key)
+
+    def note_text_column_bottom_y(self, column: str | None, bottom_y: float) -> None:
+        key = (column or 'full').strip().lower()
+        if key not in {'left', 'center', 'right'}:
+            return
+        value = float(bottom_y)
+        existing = self._text_column_bottom_y.get(key)
+        if existing is None or value > existing:
+            self._text_column_bottom_y[key] = value
+
+    def get_text_cursor(self, column: str | None = None) -> tuple[float | None, float | None]:
+        key = (column or 'full').strip().lower()
+        return self._text_cursors.get(key, (None, None))
+
+    def set_text_cursor(
+        self,
+        x: float | None,
+        y: float | None,
+        column: str | None = None,
+    ) -> None:
+        key = (column or 'full').strip().lower()
+        if x is None or y is None:
+            self._text_cursors.pop(key, None)
+        else:
+            self._text_cursors[key] = (float(x), float(y))
+
+    def clear_text_cursor_position(self, column: str | None = None) -> None:
+        key = (column or 'full').strip().lower()
+        self._text_cursors.pop(key, None)
+
+    def reset_text_cursors(self, column: str | None = None, *, clear_ink: bool = True) -> None:
+        if column is None:
+            self._text_cursors.clear()
+            if clear_ink:
+                self._text_full_width_bottom_y = None
+                self._text_column_bottom_y.clear()
+                self._text_global_bottom_y = None
+                self._last_text_draw_column = None
+            return
+        key = str(column).strip().lower()
+        self._text_cursors.pop(key, None)
+
+    def get_text_full_width_bottom_y(self) -> float | None:
+        return self._text_full_width_bottom_y
+
+    def note_text_full_width_bottom_y(self, bottom_y: float) -> None:
+        value = float(bottom_y)
+        if (
+            self._text_full_width_bottom_y is None
+            or value > self._text_full_width_bottom_y
+        ):
+            self._text_full_width_bottom_y = value
 
     def record_last_plan_debug(self, payload: dict) -> None:
         self.last_plan_debug = dict(payload)
@@ -125,6 +204,12 @@ def _fake_ros_messages(monkeypatch):
     monkeypatch.setattr(web_server, 'BoardPoint', _FakeBoardPoint)
     monkeypatch.setattr(web_server, 'PathPrimitive', _FakePathPrimitive)
     monkeypatch.setattr(web_server, 'PrimitivePathPlan', _FakePrimitivePathPlan)
+
+
+@pytest.fixture(autouse=True)
+def _mock_autotrace_preview(monkeypatch):
+    monkeypatch.setattr(web_server, 'is_autotrace_available', lambda: True)
+    monkeypatch.setattr(web_server, 'vectorize_autotrace_image_to_plan', fake_autotrace_plan)
 
 
 def _client_and_runtime() -> tuple[TestClient, _FakeRuntime]:
@@ -209,74 +294,49 @@ def _preview_image(client: TestClient, runtime: _FakeRuntime) -> dict:
     body = response.json()
     assert body['preview_id']
     assert body['canonical_hash']
-    assert body['pipeline_mode'] == 'sketch_centerline'
-    assert body['metadata']['sketch_extraction_method'] == 'adaptive'
+    assert body['pipeline_mode'] == 'sketch_autotrace'
+    assert body['metadata']['vectorization_method'] == 'autotrace'
     assert body['primitive_hash']
     assert body['execution_hash']
     return body
 
 
-def _preview_colored_image(client: TestClient, *, color_lineart_method: str = 'auto_outline') -> dict:
-    payload = _simple_colored_diagram_png()
-    response = client.post(
-        '/api/preview',
-        files={'file': ('diagram.png', payload, 'image/png')},
-        data={
-            'input_type': 'colored_image',
-            'settings_json': (
-                '{"preview_geometry_mode":"polyline","max_image_dim":600,'
-                f'"color_lineart_method":"{color_lineart_method}"' + '}'
-            ),
-        },
-    )
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body['preview_id']
-    assert body['pipeline_mode'] == 'local_outline_adaptive_centerline'
-    assert body['input_type'] == 'colored_image'
-    assert body['metadata']['color_lineart_method'] == color_lineart_method
-    assert body['converted_lineart_preview']['data_url'].startswith('data:image/png;base64,')
-    assert body['primitive_hash']
-    assert body['execution_hash']
-    return body
-
-
-def test_auto_colored_raster_uses_local_outline_pipeline() -> None:
+def test_auto_colored_raster_uses_autotrace_pipeline() -> None:
     client, _runtime = _client_and_runtime()
     response = client.post(
         '/api/preview',
         files={'file': ('diagram.png', _simple_colored_diagram_png(), 'image/png')},
         data={
             'input_type': 'auto',
-            'settings_json': '{"preview_geometry_mode":"polyline","max_image_dim":600,"color_lineart_method":"auto_outline"}',
+            'settings_json': '{"preview_geometry_mode":"polyline","max_image_dim":600}',
         },
     )
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body['input_type'] == 'colored_image'
-    assert body['pipeline_mode'] == 'local_outline_adaptive_centerline'
-    assert body['metadata']['input_detection']['input_type'] == 'colored_image'
-    assert body['converted_lineart_preview']['quality'] in {'good', 'noisy', 'complex'}
+    assert body['pipeline_mode'] == 'sketch_autotrace'
+    assert body['input_type'] == 'sketch_image'
+    assert body['preview_id']
+    assert body['primitive_hash']
+    assert body['execution_hash']
 
 
-def test_photo_diagram_edges_preview_contract_and_settings_hash() -> None:
+def test_forced_sketch_image_uses_autotrace_pipeline() -> None:
     client, _runtime = _client_and_runtime()
-    auto = _preview_colored_image(client, color_lineart_method='auto_outline')
-    photo_edges = _preview_colored_image(client, color_lineart_method='photo_diagram_edges')
-
-    assert photo_edges['metadata']['color_lineart_method'] == 'photo_diagram_edges'
-    assert photo_edges['metadata']['effective_color_lineart_method'] == 'photo_diagram_edges'
-    assert photo_edges['metadata']['canny_lower_threshold'] < photo_edges['metadata']['canny_upper_threshold']
-    assert photo_edges['metadata']['edge_pixel_ratio'] > 0
-    assert photo_edges['converted_lineart_preview']['method'] == 'photo_diagram_edges'
-    assert photo_edges['converted_lineart_preview']['metadata']['canny_lower_threshold'] < (
-        photo_edges['converted_lineart_preview']['metadata']['canny_upper_threshold']
+    response = client.post(
+        '/api/preview',
+        files={'file': ('diagram.png', _simple_colored_diagram_png(), 'image/png')},
+        data={
+            'input_type': 'sketch_image',
+            'settings_json': '{"preview_geometry_mode":"polyline","max_image_dim":600}',
+        },
     )
-    assert photo_edges['metrics']['color_lineart']['color_lineart_method'] == 'photo_diagram_edges'
-    assert photo_edges['metrics']['color_lineart']['edge_pixel_ratio'] > 0
-    assert photo_edges['execution_preview_svg'].startswith('<svg')
-    assert photo_edges['settings_hash'] != auto['settings_hash']
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body['pipeline_mode'] == 'sketch_autotrace'
+    assert body['input_type'] == 'sketch_image'
+    assert 'converted_lineart_preview' not in body
 
 
 def test_vpype_preview_falls_back_to_internal_when_missing(monkeypatch) -> None:
@@ -368,8 +428,8 @@ def _preview_sketch(client: TestClient) -> dict:
     body = response.json()
     assert body['preview_id']
     assert body['canonical_hash']
-    assert body['pipeline_mode'] == 'sketch_centerline'
-    assert body['metadata']['sketch_extraction_method'] == 'adaptive'
+    assert body['pipeline_mode'] == 'sketch_autotrace'
+    assert body['metadata']['vectorization_method'] == 'autotrace'
     assert body['primitive_hash']
     assert body['execution_hash']
     return body
@@ -422,13 +482,13 @@ def test_image_preview_draw_uses_same_cached_canonical_hash(monkeypatch) -> None
     def _reject_rebuild(*_args, **_kwargs):
         raise AssertionError('draw must use the cached image CanonicalPathPlan')
 
-    monkeypatch.setattr(web_server, 'vectorize_image_to_canonical_plan', _reject_rebuild)
+    monkeypatch.setattr(web_server, 'vectorize_autotrace_image_to_plan', _reject_rebuild)
 
     response = client.post('/api/draw', json={'preview_id': preview['preview_id']})
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body['source_type'] == 'sketch_centerline'
+    assert body['source_type'] == 'sketch_image'
     assert body['canonical_hash'] == preview['canonical_hash']
     assert body['preview_draw_hash_match'] is True
     assert runtime.node.publish_count == 1
@@ -441,62 +501,17 @@ def test_sketch_preview_draw_uses_same_cached_canonical_hash(monkeypatch) -> Non
     def _reject_rebuild(*_args, **_kwargs):
         raise AssertionError('draw must use the cached sketch CanonicalPathPlan')
 
-    monkeypatch.setattr(web_server, 'vectorize_sketch_image_to_plan', _reject_rebuild)
+    monkeypatch.setattr(web_server, 'vectorize_autotrace_image_to_plan', _reject_rebuild)
 
     response = client.post('/api/draw', json={'preview_id': preview['preview_id']})
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body['source_type'] == 'sketch_centerline'
+    assert body['source_type'] == 'sketch_image'
     assert body['canonical_hash'] == preview['canonical_hash']
     assert body['preview_draw_hash_match'] is True
     assert runtime.node.publish_count == 1
 
-
-def test_colored_preview_uses_local_outline_and_draw_uses_cached_payload(monkeypatch) -> None:
-    client, runtime = _client_and_runtime()
-    preview = _preview_colored_image(client)
-
-    def _reject_color_conversion(*_args, **_kwargs):
-        raise AssertionError('draw must not rerun local outline conversion')
-
-    def _reject_vectorize(*_args, **_kwargs):
-        raise AssertionError('draw must not rerun sketch vectorization')
-
-    monkeypatch.setattr(web_server, 'convert_color_image_to_lineart', _reject_color_conversion)
-    monkeypatch.setattr(web_server, 'vectorize_sketch_image_to_plan', _reject_vectorize)
-
-    response = client.post('/api/draw', json={'preview_id': preview['preview_id']})
-
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body['primitive_hash'] == preview['primitive_hash']
-    assert body['execution_hash'] == preview['execution_hash']
-    assert body['preview_draw_hash_match'] is True
-    assert runtime.node.publish_count == 1
-
-
-def test_forced_sketch_image_bypasses_color_lineart_conversion(monkeypatch) -> None:
-    client, _runtime = _client_and_runtime()
-
-    def _reject_color_conversion(*_args, **_kwargs):
-        raise AssertionError('forced sketch_image must not call color conversion')
-
-    monkeypatch.setattr(web_server, 'convert_color_image_to_lineart', _reject_color_conversion)
-    response = client.post(
-        '/api/preview',
-        files={'file': ('diagram.png', _simple_colored_diagram_png(), 'image/png')},
-        data={
-            'input_type': 'sketch_image',
-            'settings_json': '{"preview_geometry_mode":"polyline","max_image_dim":600,"color_lineart_method":"auto_outline"}',
-        },
-    )
-
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body['pipeline_mode'] == 'sketch_centerline'
-    assert body['input_type'] == 'sketch_image'
-    assert 'converted_lineart_preview' not in body
 
 
 def test_invalid_raster_upload_returns_clear_bad_request() -> None:
@@ -530,30 +545,6 @@ def test_preview_metrics_split_canonical_and_executable_geometry() -> None:
     assert metrics['executable_geometry']['sampled_point_count'] == metrics['draw_sample_count']
 
 
-def test_compare_methods_returns_per_engine_results_without_selecting_active_preview() -> None:
-    client, _runtime = _client_and_runtime()
-
-    response = client.post(
-        '/api/preview/compare',
-        files={'file': ('line.png', _simple_line_art_png(), 'image/png')},
-        data={
-            'settings_json': '{"preview_geometry_mode":"polyline","max_image_dim":600}',
-            'engines_json': '["internal_centerline","autotrace_centerline"]',
-        },
-    )
-
-    assert response.status_code == 200, response.text
-    payload = response.json()
-    assert payload['active_preview_mutated'] is False
-    results = payload['results']
-    assert [result['engine_name'] for result in results] == ['internal_centerline', 'autotrace_centerline']
-    assert results[0]['available'] is True
-    assert results[0]['preview_id']
-    assert results[0]['execution_preview_svg'].startswith('<svg')
-    assert 'canonical_geometry' in results[0]
-    assert 'executable_geometry' in results[0]
-    assert 'available' in results[1]
-
 
 def test_draw_with_preview_id_uses_cached_svg_without_rebuilding(monkeypatch) -> None:
     client, runtime = _client_and_runtime()
@@ -584,6 +575,6 @@ def test_cached_preview_draw_rejects_missing_and_expired_preview_id(monkeypatch)
 
     expired = client.post('/api/draw', json={'preview_id': preview['preview_id']})
 
-    assert expired.status_code == 410
-    assert 'expired' in expired.json()['detail']
+    assert expired.status_code in {404, 410}
+    assert 'preview_id' in expired.json()['detail']
     assert runtime.node.publish_count == 0

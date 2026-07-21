@@ -1363,6 +1363,7 @@ def _vectorize_text_grouped_with_templates(
     curve_tolerance: float,
     simplify_epsilon: float,
     max_line_width_units: float | None,
+    initial_cursor_x_em: float = 0.0,
 ) -> tuple[TextGlyphOutline, ...]:
     letter_spacing_em, word_spacing_em, uppercase_advance_scale = _normalized_text_spacing_defaults()
     usable_line_width_em = (
@@ -1375,8 +1376,8 @@ def _vectorize_text_grouped_with_templates(
     glyphs: list[TextGlyphOutline] = []
     y_offset = 0.0
     line_index = 0
-    for raw_line in text.split('\n'):
-        cursor_x = 0.0
+    for raw_line_index, raw_line in enumerate(text.split('\n')):
+        cursor_x = float(initial_cursor_x_em) if raw_line_index == 0 else 0.0
         word_index = -1
         line_has_content = False
         pending_space_width = 0.0
@@ -1457,6 +1458,7 @@ def vectorize_text_grouped(
     curve_tolerance: float = _DEFAULT_TEXT_CURVE_TOLERANCE,
     simplify_epsilon: float = 0.0,
     max_line_width_units: float | None = None,
+    initial_cursor_x_em: float = 0.0,
 ) -> tuple[TextGlyphOutline, ...]:
     normalized_text = normalize_text_for_text_mode(text)
     if not text.strip():
@@ -1469,6 +1471,7 @@ def vectorize_text_grouped(
         curve_tolerance=curve_tolerance,
         simplify_epsilon=simplify_epsilon,
         max_line_width_units=max_line_width_units,
+        initial_cursor_x_em=initial_cursor_x_em,
     )
 
 

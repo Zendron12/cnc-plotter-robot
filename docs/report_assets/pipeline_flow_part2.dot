@@ -1,0 +1,20 @@
+digraph pipeline_flow_part2 {
+    graph [rankdir=LR, bgcolor=white, splines=ortho, nodesep=0.35, ranksep=0.55, fontname="Arial"];
+    node [shape=box, style="rounded", fontname="Arial", fontsize=12, margin="0.18,0.10"];
+    edge [fontname="Arial", fontsize=10, arrowsize=0.7];
+
+    label="Part 2 of 2 — Planning and execution";
+    labelloc=t;
+    fontsize=14;
+    fontname="Arial";
+
+    prev [label="From Part 1:\nCanonical Path +\ncurve fit preview", shape=box, style="dashed,rounded"];
+    tsp [label="Stroke reorder\n(NN + 2-opt)"];
+    executor [label="C++ Executor\nIK @ 50 Hz"];
+    ros [label="ROS 2 / DDS\nmotor commands"];
+    draw [label="Draw on\nwhiteboard"];
+    home [label="Return\nhome"];
+    finish [label="End", shape=circle, width=0.45, fixedsize=true];
+
+    prev -> tsp -> executor -> ros -> draw -> home -> finish;
+}

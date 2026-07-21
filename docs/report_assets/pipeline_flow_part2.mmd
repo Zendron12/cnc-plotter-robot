@@ -1,0 +1,11 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TD
+    prev["← Continued from Part 1<br/>(Canonical Path + curve fit preview)"]
+    tsp["Stroke reorder<br/>NN + 2-opt, time budget"]
+    executor["C++ Executor<br/>Inverse kinematics @ 50 Hz"]
+    ros["ROS 2 / DDS<br/>motor commands"]
+    draw["Draw on whiteboard"]
+    home["Return home"]
+    finish([End])
+
+    prev --> tsp --> executor --> ros --> draw --> home --> finish

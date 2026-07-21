@@ -66,7 +66,6 @@ This adapter does not:
 - parse SVG
 - vectorize text
 - parse voice commands
-- load numbered image library assets
 - optimize paths
 - publish ROS messages
 - call Webots

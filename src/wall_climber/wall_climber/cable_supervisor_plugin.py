@@ -11,6 +11,8 @@ from wall_climber import _webots_nav as _wnav
 from wall_climber.four_cable_kinematics import FOUR_CABLE_NAMES, compute_four_cable_lengths
 from wall_climber_interfaces.msg import CableSetpoint
 from wall_climber.runtime_topics import (
+    CABLE_EXECUTOR_STATUS_TOPIC,
+    EXECUTION_CANCEL_TOPIC,
     MANUAL_PEN_MODE_TOPIC,
     PEN_MODE_AUTO,
     PEN_MODE_DOWN,
@@ -78,7 +80,10 @@ class CableSupervisorPlugin:
         self._safe_x_max = float(properties.get('safe_x_max', '6.14'))
         self._safe_y_min = float(properties.get('safe_y_min', '0.32'))
         self._safe_y_max = float(properties.get('safe_y_max', '2.82'))
-        self._corner_keepout_radius = float(properties.get('corner_keepout_radius', '0.36'))
+        corner_keepout = float(properties.get('corner_keepout_radius', '0.24'))
+        if corner_keepout == 0.36:
+            corner_keepout = 0.24
+        self._corner_keepout_radius = corner_keepout
 
         legacy_anchor_left = (
             float(properties.get('anchor_left_x', '0.0')),
@@ -190,6 +195,8 @@ class CableSupervisorPlugin:
         self._latest_setpoint = None
         self._latest_four_cable_lengths = None
         self._pending_setpoints: list = []
+        self._cancel_motion_hold = False
+        self._post_cancel_park_active = False
         self._pen_down_requested = False
         self._manual_pen_mode = PEN_MODE_AUTO
         self._pen_contact_latched = False
@@ -248,6 +255,18 @@ class CableSupervisorPlugin:
             String,
             MANUAL_PEN_MODE_TOPIC,
             self._manual_pen_mode_cb,
+            _TRANSIENT_QOS,
+        )
+        self._node.create_subscription(
+            String,
+            EXECUTION_CANCEL_TOPIC,
+            self._execution_cancel_cb,
+            _TRANSIENT_QOS,
+        )
+        self._node.create_subscription(
+            String,
+            CABLE_EXECUTOR_STATUS_TOPIC,
+            self._executor_status_cb,
             _TRANSIENT_QOS,
         )
 
@@ -325,7 +344,9 @@ class CableSupervisorPlugin:
         # the simulator).
         self._pending_setpoints.append(msg)
         # Cap the queue to avoid unbounded memory if the supervisor stalls.
-        if len(self._pending_setpoints) > 64:
+        # During post-cancel parking, keep every sample so the carriage does
+        # not warp-jump toward the park pose.
+        if not self._post_cancel_park_active and len(self._pending_setpoints) > 64:
             # Always keep the most recent samples; drop the oldest excess.
             del self._pending_setpoints[: len(self._pending_setpoints) - 64]
         self._latest_setpoint = msg
@@ -341,6 +362,26 @@ class CableSupervisorPlugin:
             self._pen_down_requested = bool(self._latest_setpoint.pen_down) if self._latest_setpoint is not None else False
         else:
             self._pen_down_requested = (mode == PEN_MODE_DOWN)
+
+    def _execution_cancel_cb(self, msg: String):
+        if not msg:
+            return
+        command = str(msg.data).strip().lower()
+        if command not in {'stop', 'cancel'}:
+            return
+        self._pending_setpoints.clear()
+        self._latest_setpoint = None
+        self._cancel_motion_hold = True
+        self._post_cancel_park_active = True
+        if self._manual_pen_mode == PEN_MODE_AUTO:
+            self._pen_down_requested = False
+
+    def _executor_status_cb(self, msg: String):
+        if not msg or not self._post_cancel_park_active:
+            return
+        status = str(msg.data).strip().lower()
+        if status in {'done', 'idle', 'error'}:
+            self._post_cancel_park_active = False
 
     def _set_status(self, status: str):
         if self._last_status == status:
@@ -1092,7 +1133,9 @@ class CableSupervisorPlugin:
         active_setpoint = None
         if self._pending_setpoints:
             active_setpoint = self._pending_setpoints.pop(0)
-        elif self._latest_setpoint is not None:
+            if self._cancel_motion_hold:
+                self._cancel_motion_hold = False
+        elif not self._cancel_motion_hold and self._latest_setpoint is not None:
             active_setpoint = self._latest_setpoint
 
         if active_setpoint is None:
@@ -1136,7 +1179,7 @@ class CableSupervisorPlugin:
                 else:
                     self._apply_target_pose(center_x, center_y)
                     self._set_status('tracking')
-                    if not reached_target:
+                    if not reached_target and not self._cancel_motion_hold:
                         # Push the original target back so the next step keeps
                         # advancing toward it instead of dropping it.
                         self._pending_setpoints.insert(0, active_setpoint)

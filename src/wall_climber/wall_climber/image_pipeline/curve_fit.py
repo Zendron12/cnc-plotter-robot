@@ -327,11 +327,11 @@ def _fit_span_recursive(
     *,
     curve_tolerance_m: float,
     counters: Counter,
-    deadline: float,
+    deadline: float | None,
     warnings: list[str],
     depth: int = 0,
 ) -> tuple[LineSegment | QuadraticBezier | CubicBezier, ...]:
-    if time.perf_counter() >= deadline:
+    if deadline is not None and time.perf_counter() >= deadline:
         counters['timeout_line_segments'] += max(0, len(points) - 1)
         if not any('curve fitting time budget' in warning for warning in warnings):
             warnings.append('Sketch curve fitting time budget exceeded; remaining spans were kept as line segments.')
@@ -449,7 +449,12 @@ def drawing_path_plan_to_smooth_canonical(
     if plan.frame != 'board':
         raise ValueError("DrawingPathPlan.frame must be 'board' for smooth canonical conversion.")
     tolerance = max(0.0, float(curve_tolerance_m))
-    deadline = time.perf_counter() + (max(0.0, float(max_fit_time_ms)) / 1000.0)
+    fit_time_ms = float(max_fit_time_ms)
+    deadline = (
+        None
+        if fit_time_ms <= 0.0
+        else time.perf_counter() + (fit_time_ms / 1000.0)
+    )
     counters: Counter = Counter()
     warnings: list[str] = []
     commands: list[CanonicalCommand] = []

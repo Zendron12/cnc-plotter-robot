@@ -39,18 +39,24 @@ setup(
     ],
     install_requires=[
         'setuptools',
+        'numpy',
+        'opencv-python-headless',
         'fastapi',
         'uvicorn',
         'websockets',
         'python-multipart',
         'matplotlib',
+        'huggingface_hub',
+        'gdown',
+        'spandrel',
+        'google-genai',
+        'torchvision',
         'scikit-image',
-        # Optional at runtime: self-hosted English speech-to-text for the voice
-        # control feature. If it (or its model weights) is unavailable, the
-        # /api/voice/transcribe endpoint returns 503 and the web UI falls back to
-        # the browser Web Speech API. Model weights download once on first use
-        # and are cached under the user's home directory.
         'faster-whisper',
+        'silero-vad',
+        'torch',
+        'nvidia-cublas-cu12',
+        'nvidia-cudnn-cu12',
     ],
     extras_require={
         'test': [
@@ -64,7 +70,7 @@ setup(
     maintainer='hisham',
     maintainer_email='2144934@std.hu.edu.jo',
     description='Four-cable Webots drawing robot package',
-    license='Apache-2.0',
+    license='MIT',
     entry_points={
         'console_scripts': [
             'urdf_spawner = wall_climber.urdf_spawner:main',

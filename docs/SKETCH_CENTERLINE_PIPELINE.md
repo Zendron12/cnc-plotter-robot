@@ -42,7 +42,7 @@ It does not fall back to the unthinned binary mask.
 Endpoint:
 
 ```text
-POST /api/sketch-centerline/preview
+POST /api/preview
 ```
 
 Request format:
@@ -77,7 +77,7 @@ Fields:
 Example:
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/api/sketch-centerline/preview \
+curl -s -X POST http://127.0.0.1:8080/api/preview \
   -F "file=@sketch.png" \
   -F "margin_m=0.05" | python3 -m json.tool
 ```
@@ -123,7 +123,7 @@ default. This fits and centers the sketch in the drawable region where the pen
 path keeps the carriage body inside the board and inside the configured safe
 cable workspace.
 
-The UI calls `/api/sketch-centerline/preview`, displays the returned
+The UI calls `POST /api/preview`, displays the returned
 `preview_svg`, and uses that same full SVG as the Board Workspace preview
 overlay when available. It also shows stroke and point counts, canonical command count, bounds,
 preview truncation status, raw/final stroke counts, merge counts, selected
@@ -246,18 +246,26 @@ continues to use the existing upload/vector pipeline.
 
 ## Runtime Status
 
-`POST /api/sketch-centerline/preview` is still preview-first. On success it now
-returns a `preview_id` and `canonical_hash`, then stores the backend-owned
-canonical result in process-local preview caches. The sketch-specific draw
-endpoint keeps a short-lived entry for about 10 minutes. The generic
-`POST /api/draw` preview cache keeps the same canonical plan for about 30
-minutes. Both caches are cleared when the backend process restarts.
+`POST /api/preview` is still preview-first. On success it now returns a
+`preview_id` and `canonical_hash`, then stores the backend-owned canonical
+result in process-local preview caches. The sketch-specific draw endpoint keeps
+a short-lived entry for about 10 minutes. The generic `POST /api/draw` preview
+cache keeps the same canonical plan for about 30 minutes. Both caches are
+cleared when the backend process restarts.
 
-`POST /api/sketch-centerline/draw` accepts only that `preview_id`. It does not
-accept browser-provided SVG, preview points, board-canvas data, or path
-commands. The backend looks up the cached canonical plan, validates it against
-the existing execution transport, converts it to `PrimitivePathPlan`, and
-publishes through the existing ROS/Webots executor path.
+`POST /api/draw` accepts only that `preview_id`. It does not accept
+browser-provided SVG, preview points, board-canvas data, or path commands. The
+backend looks up the cached canonical plan, validates it against the existing
+execution transport, converts it to `PrimitivePathPlan`, and publishes through
+the existing ROS/Webots executor path.
+
+Example:
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/api/draw \
+  -H "Content-Type: application/json" \
+  -d '{"preview_id":"<preview_id from preview response>"}' | python3 -m json.tool
+```
 
 `POST /api/draw` can also draw the same cached sketch preview by `preview_id`.
 When no draw-time optimization is requested, the draw response returns the same
